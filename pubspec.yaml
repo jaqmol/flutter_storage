@@ -2,7 +2,7 @@ name: flutter_storage
 description: A new Flutter package project.
 version: 0.0.1
 author: Ronny Reichmann <ronny.reichmann@gmail.com>
-homepage: 
+homepage: https://github.com/jaqmol/flutter_storage
 
 environment:
   sdk: ">=2.0.0-dev.68.0 <3.0.0"
