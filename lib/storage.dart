@@ -1,3 +1,0 @@
-/*
-  Frontend that established isolate and provides messaging with the backend.
-*/

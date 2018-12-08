@@ -3,6 +3,106 @@ import 'package:meta/meta.dart';
 import 'log_file.dart';
 import 'dart:collection';
 
+/// StorageDecodeEntry
+/// 
+/// Iteration entry.
+/// The [key] identifies the key-value-pair.
+/// The [value] is the deserializer of the gicen value.
+/// [Deserializer.meta.type] helps with identifying the encoded data's type.
+/// 
+class StorageDecodeEntry {
+  final Deserializer value;
+  final String key;
+
+  StorageDecodeEntry(this.key, this.value);
+}
+
+/// StorageEncodeEntry
+/// 
+/// Add a collection entry.
+/// The [key] identifies the key-value-pair.
+/// The [value] is the model to be added.
+/// 
+class StorageEncodeEntry<T extends Model> {
+  final String key;
+  final T value;
+
+  StorageEncodeEntry(this.key, this.value);
+}
+
+
+
+/// UndoAction
+/// 
+/// Represents an action that was undone.
+/// Process this action according to it's [type].
+/// The static fields [typeChange] and [typeRemove] 
+/// can be used for identification.
+/// 
+class UndoAction {
+  static final int typeChange = UndoRangeItem.typeChange;
+  static final int typeRemove = UndoRangeItem.typeRemove;
+  final Deserializer value;
+  final String key;
+  final int type;
+
+  UndoAction(this.type, this.key, this.value);
+}
+
+
+
+typedef bool HasValueForKeyFn(String key);
+typedef String GetValueForKeyFn(String key);
+
+class StorageBackendIterable extends IterableBase<StorageDecodeEntry> {
+  final LogFile _log;
+  final Iterator<MapEntry<String, LogRange>> _ito;
+  final HasValueForKeyFn _hasCachedValue;
+  final GetValueForKeyFn _getCachedValue;
+
+  StorageBackendIterable(this._log, this._ito, this._hasCachedValue, this._getCachedValue);
+
+  Iterator<StorageDecodeEntry> get iterator => StorageBackendIterator(
+    _log, _ito, _hasCachedValue, _getCachedValue,
+  );
+}
+
+class StorageBackendIterator implements Iterator<StorageDecodeEntry> {
+  final LogFile _log;
+  final Iterator<MapEntry<String, LogRange>> _ito;
+  final HasValueForKeyFn hasCachedValue;
+  final GetValueForKeyFn getCachedValue;
+
+  StorageBackendIterator(this._log, this._ito, this.hasCachedValue, this.getCachedValue);
+
+  bool moveNext() => _ito.moveNext();
+
+  StorageDecodeEntry get current {
+    var entry = _ito.current;
+    Deserializer deserialize;
+    if (hasCachedValue(entry.key)) {
+      var value = getCachedValue(entry.key);
+      deserialize = Deserializer(value);
+    } else {
+      deserialize = modelDeserializerForRange(entry.value, _log);
+    }
+    return StorageDecodeEntry(entry.key, deserialize);
+  }
+}
+
+Deserializer modelDeserializerForRange(
+  LogRange range,
+  LogFile log,
+  [String key, HashMap<String, String> cache]
+) {
+  String value = log.readRange(range);
+  var entry = ChangeValueEntry.decode(Deserializer(value));
+  if (key != null && cache != null) {
+    cache[key] = entry.encodedModel;
+  }
+  return Deserializer(entry.encodedModel);
+}
+
 abstract class ValueEntry extends Model {}
 
 class StorageStateEntry extends ValueEntry {
@@ -129,36 +229,36 @@ class UndoStack extends ValueEntry with IterableMixin<UndoGroup>{
     : _stack = deserialize.collection<UndoGroup>(UndoGroup.decodeGroup);
 }
 
-class UndoGroup extends Model with IterableMixin<UndoGroupItem> {
+class UndoGroup extends Model with IterableMixin<UndoRangeItem> {
   static final String type = 'undo-group';
-  final List<UndoGroupItem> _items;
+  final List<UndoRangeItem> _items;
 
-  UndoGroup([List<UndoGroupItem> items]) 
-    : _items = items ?? List<UndoGroupItem>();
+  UndoGroup([List<UndoRangeItem> items]) 
+    : _items = items ?? List<UndoRangeItem>();
 
   int get length => _items.length;
-  UndoGroupItem operator[] (int i) => _items[i];
+  UndoRangeItem operator[] (int i) => _items[i];
 
-  Iterator<UndoGroupItem> get iterator => _items.iterator;
+  Iterator<UndoRangeItem> get iterator => _items.iterator;
 
-  void add(UndoGroupItem item) => _items.add(item);
+  void add(UndoRangeItem item) => _items.add(item);
 
   Serializer encode([Serializer serialize]) =>
     (serialize ?? Serializer(type))
-      .collection<UndoGroupItem>(
+      .collection<UndoRangeItem>(
         _items,
-        UndoGroupItem.encodeItem,
+        UndoRangeItem.encodeItem,
       );
 
   static Serializer encodeGroup(Serializer serialize, UndoGroup group) =>
     group.encode(serialize);
 
   static UndoGroup decodeGroup(Deserializer deserialize) => UndoGroup(
-    deserialize.collection<UndoGroupItem>(UndoGroupItem.decodeItem),
+    deserialize.collection<UndoRangeItem>(UndoRangeItem.decodeItem),
   );
 }
 
-class UndoGroupItem extends Model {
+class UndoRangeItem extends Model {
   static final String type = 'undo-group-item';
   static int typeChange = 0;
   static int typeRemove = 1;
@@ -167,12 +267,12 @@ class UndoGroupItem extends Model {
   final int undoType;
   final String key;
 
-  UndoGroupItem(this.undoType, this.key, this.range);
+  UndoRangeItem(this.undoType, this.key, this.range);
 
-  UndoGroupItem.change(this.key, this.range)
+  UndoRangeItem.change(this.key, this.range)
     : undoType = typeChange;
 
-  UndoGroupItem.remove(this.key, this.range)
+  UndoRangeItem.remove(this.key, this.range)
     : undoType = typeRemove;
 
   Serializer encode([Serializer serialize]) =>
@@ -184,10 +284,10 @@ class UndoGroupItem extends Model {
 
   static Serializer encodeItem(
     Serializer s,
-    UndoGroupItem i,
+    UndoRangeItem i,
   ) => i.encode(s);
 
-  static UndoGroupItem decodeItem(Deserializer deserialize) => UndoGroupItem(
+  static UndoRangeItem decodeItem(Deserializer deserialize) => UndoRangeItem(
     deserialize.integer(),
     deserialize.string(),
     LogRange(

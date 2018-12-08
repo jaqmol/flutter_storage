@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/storage_entries.dart';
-import 'package:flutter_storage/serialization.dart';
-import 'package:flutter_storage/log_file.dart';
+import 'package:flutter_storage/src/storage_entries.dart';
+import 'package:flutter_storage/src/serialization.dart';
+import 'package:flutter_storage/src/log_file.dart';
 import 'dart:math';
 
 void main() {
@@ -109,24 +109,24 @@ void main() {
     }
   });
 
-  test('UndoGroupItem', () {
-    var expectedItems = createUndoGroupItems(100, gen);
-    var serialize = Serializer('${UndoGroupItem.type}-collection');
+  test('UndoRangeItem', () {
+    var expectedItems = createUndoRangeItems(100, gen);
+    var serialize = Serializer('${UndoRangeItem.type}-collection');
     var encodedItems = serialize.collection(
       expectedItems,
-      (Serializer s, UndoGroupItem i) => i.encode(s),
+      (Serializer s, UndoRangeItem i) => i.encode(s),
     )();
     var deserialize = Deserializer(encodedItems);
     var decodedItems = deserialize
-      .collection<UndoGroupItem>(UndoGroupItem.decodeItem);
+      .collection<UndoRangeItem>(UndoRangeItem.decodeItem);
     expect(decodedItems.length, equals(expectedItems.length));
     for (int i = 0; i < expectedItems.length; i++) {
-      compareUndoGroupItems(expectedItems[i], decodedItems[i]);
+      compareUndoRangeItems(expectedItems[i], decodedItems[i]);
     }
   });
 
   test('UndoGroup', () {
-    var expectedGroup = UndoGroup(createUndoGroupItems(100, gen));
+    var expectedGroup = UndoGroup(createUndoRangeItems(100, gen));
     var encodedGroup = expectedGroup.encode()();
     var deserialize = Deserializer(encodedGroup);
     var decodedGroup = UndoGroup.decodeGroup(deserialize);
@@ -136,7 +136,7 @@ void main() {
 
   test('UndoStack', () {
     var expectedGroups = List<UndoGroup>.generate(20, (_) {
-      return UndoGroup(createUndoGroupItems(20, gen));
+      return UndoGroup(createUndoRangeItems(20, gen));
     });
     var expectedStack = UndoStack(expectedGroups);
     var encodedStack = expectedStack.encode()();
@@ -153,13 +153,13 @@ void main() {
   });
 }
 
-List<UndoGroupItem> createUndoGroupItems(int amount, Random gen) {
-  var undoTypes = <int>[UndoGroupItem.typeChange, UndoGroupItem.typeRemove];
-  return List<UndoGroupItem>.generate(
+List<UndoRangeItem> createUndoRangeItems(int amount, Random gen) {
+  var undoTypes = <int>[UndoRangeItem.typeChange, UndoRangeItem.typeRemove];
+  return List<UndoRangeItem>.generate(
     amount,
-    (int index) => UndoGroupItem(
+    (int index) => UndoRangeItem(
       undoTypes[gen.nextInt(undoTypes.length)],
-      'UndoGroupItem_$index',
+      'UndoRangeItem_$index',
       LogRange(
         gen.nextInt(100),
         gen.nextInt(100),
@@ -170,11 +170,11 @@ List<UndoGroupItem> createUndoGroupItems(int amount, Random gen) {
 
 void compareUndoGroups(UndoGroup a, UndoGroup b) {
   for (int i = 0; i < a.length; i++) {
-    compareUndoGroupItems(a[i], b[i]);
+    compareUndoRangeItems(a[i], b[i]);
   }
 }
 
-void compareUndoGroupItems(UndoGroupItem a, UndoGroupItem b) {
+void compareUndoRangeItems(UndoRangeItem a, UndoRangeItem b) {
   expect(a.undoType, equals(b.undoType));
   expect(a.key, equals(b.key));
   expect(a.range.start, equals(b.range.start));

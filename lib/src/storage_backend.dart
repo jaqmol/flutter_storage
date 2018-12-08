@@ -20,7 +20,7 @@ class StorageBackend {
   final String path;
   bool _isOpen;
   
-  StorageBackend(this.path)
+  StorageBackend(this.path /*, [this.fromFrontend, this.toFrontend]*/)
     : _index = HashMap<String, LogRange>(),
       _cache = HashMap<String, String>(),
       _undoStack = UndoStack(),
@@ -29,16 +29,15 @@ class StorageBackend {
         _initState();
       }
 
-  // Map API
-
-  /// Sets the given key to the given value.
+  /// Sets the given value for the given key.
   /// 
   /// Logs the change to the underlaying file.
   /// Keeps the value in the cache until [clearCache] is called.
   /// To make a batch of changes undoable, wrap them in both:
   /// [openUndoGroup] and [closeUndoGroup].
   /// 
-  void operator[]= (String key, Model model) {
+  // void operator[]= (String key, Model model) {
+  void setValue(String key, Model model) {
     assert(_isOpen, _closedErrorMsg);
     var encodedModel = model.encode()();
     var entry = ChangeValueEntry(
@@ -50,7 +49,7 @@ class StorageBackend {
       // If undos are logged right away, the undo
       // stack becomes difficult to manage.
       if (_openUndoGroup != null) {
-        _openUndoGroup.add(UndoGroupItem.change(key, previousRange));
+        _openUndoGroup.add(UndoRangeItem.change(key, previousRange));
       }
       _changesCount++;
     }
@@ -62,11 +61,12 @@ class StorageBackend {
   /// Adding a collection of key-value-pairs.
   /// 
   /// The key-value-pairs need to be provided as iterable
-  /// of [StorageBackendEncodeEntry]s.
+  /// of [StorageEncodeEntry]s.
   /// 
-  void addEntries(Iterable<StorageBackendEncodeEntry> entries) {
-    for (StorageBackendEncodeEntry entry in entries) {
-      this[entry.key] = entry.value;
+  void addEntries(Iterable<StorageEncodeEntry> entries) {
+    for (StorageEncodeEntry entry in entries) {
+      // this[entry.key] = entry.value;
+      setValue(entry.key, entry.value);
     }
   }
 
@@ -75,7 +75,8 @@ class StorageBackend {
   /// Check the deserializer's meta field for the
   /// type of the model for decoding.
   /// 
-  Deserializer operator[] (String key) {
+  // Deserializer operator[] (String key) {
+  Deserializer value(String key) {
     assert(_isOpen, _closedErrorMsg);
     Deserializer value;
     if (_cache.containsKey(key)) {
@@ -83,7 +84,7 @@ class StorageBackend {
     } else {
       LogRange range = _index[key];
       if (range != null) {
-        value = _modelDeserializerForRange(range, _log, key, _cache);
+        value = modelDeserializerForRange(range, _log, key, _cache);
       }
     }
     return value;
@@ -100,9 +101,9 @@ class StorageBackend {
     // If undos are logged right away, the undo
     // stack becomes difficult to manage.
     if (_openUndoGroup != null) {
-      _openUndoGroup.add(UndoGroupItem.remove(key, range));
+      _openUndoGroup.add(UndoRangeItem.remove(key, range));
     }
-    var deserialize = _modelDeserializerForRange(range, _log);
+    var deserialize = modelDeserializerForRange(range, _log);
     var removeEntry = RemoveValueEntry(key);
     _log.appendLine(removeEntry.encode()());
     _index.remove(key);
@@ -158,18 +159,24 @@ class StorageBackend {
 
   /// Undo all changes made in an undo group;
   /// 
-  /// Returns a [StorageBackendUndoGroup] containing
-  /// all [StorageBackendUndoAction]s for the user to 
+  /// Returns a [List<UndoAction>]s containing
+  /// all [UndoAction]s for the user to 
   /// further process undo actions.
   /// 
-  StorageBackendUndoGroup undo() {
+  List<UndoAction> undo() {
     var group = _undoStack.pop();
-    for (UndoGroupItem item in group) {
+    var actions = List<UndoAction>();
+    for (UndoRangeItem item in group) {
       // Change and Remove have the same effect on index and cache
       _index[item.key] = item.range;
       _cache.remove(item.key);
+      actions.add(UndoAction(
+        item.undoType,
+        item.key,
+        value(item.key),
+      ));
     }
-    return StorageBackendUndoGroup(group.iterator, this);
+    return actions;
   }
 
 
@@ -178,7 +185,7 @@ class StorageBackend {
 
   /// Iterate keys and values
   /// 
-  Iterable<StorageBackendDecodeEntry> get entries {
+  Iterable<StorageDecodeEntry> get entries {
     assert(_isOpen, _closedErrorMsg);
     return StorageBackendIterable(
       _log, _index.entries.iterator,
@@ -202,7 +209,7 @@ class StorageBackend {
       if (_cache.containsKey(entry.key)) {
         return Deserializer(_cache[entry.key]);
       } else {
-        return _modelDeserializerForRange(entry.value, _log);
+        return modelDeserializerForRange(entry.value, _log);
       }
     });
   }
@@ -336,144 +343,10 @@ class StorageBackend {
   /// 
   /// Hint: always [flushStateAndClose] a storage.
   /// 
-  void flushStateAndClose() async {
+  void flushStateAndClose() {
     assert(_isOpen, _closedErrorMsg);
     _isOpen = false;
     flushState();
     _log.flushAndClose();
-  }
-}
-
-Deserializer _modelDeserializerForRange(
-  LogRange range,
-  LogFile log,
-  [String key, HashMap<String, String> cache]
-) {
-  String value = log.readRange(range);
-  var entry = ChangeValueEntry.decode(Deserializer(value));
-  if (key != null && cache != null) {
-    cache[key] = entry.encodedModel;
-  }
-  return Deserializer(entry.encodedModel);
-}
-
-/// StorageBackendDecodeEntry
-/// 
-/// Iteration entry.
-/// The [key] identifies the key-value-pair.
-/// The [value] is the deserializer of the gicen value.
-/// [Deserializer.meta.type] helps with identifying the encoded data's type.
-/// 
-class StorageBackendDecodeEntry {
-  final Deserializer value;
-  final String key;
-
-  StorageBackendDecodeEntry(this.key, this.value);
-}
-
-/// StorageBackendEncodeEntry
-/// 
-/// Add a collection entry.
-/// The [key] identifies the key-value-pair.
-/// The [value] is the model to be added.
-/// 
-class StorageBackendEncodeEntry<T extends Model> {
-  final String key;
-  final T value;
-
-  StorageBackendEncodeEntry(this.key, this.value);
-}
-
-
-/// StorageBackendUndoGroup
-/// 
-/// Groups [StorageBackendUndoAction]s.
-/// Exposes an iterable interface throught an iterator.
-/// 
-class StorageBackendUndoGroup extends IterableBase {
-  final Iterator<UndoGroupItem> _ito;
-  final StorageBackend _backend;
-
-  StorageBackendUndoGroup(this._ito, this._backend);
-
-  StorageBackendUndoGroupIterator get iterator {
-    return StorageBackendUndoGroupIterator(_ito, _backend);
-  }
-}
-
-class StorageBackendUndoGroupIterator implements Iterator<StorageBackendUndoAction> {
-  final Iterator<UndoGroupItem> _ito;
-  final StorageBackend _backend;
-
-  StorageBackendUndoGroupIterator(this._ito, this._backend);
-
-  bool moveNext() => _ito.moveNext();
-
-  StorageBackendUndoAction get current {
-    var item = _ito.current;
-    var deserialize = _backend[item.key];
-    return StorageBackendUndoAction(
-      item.undoType,
-      item.key,
-      deserialize,
-    );
-  }
-}
-
-/// StorageBackendUndoAction
-/// 
-/// Represents an action that was undone.
-/// Process this action according to it's [type].
-/// The static fields [typeChange] and [typeRemove] 
-/// can be used for identification.
-/// 
-class StorageBackendUndoAction {
-  static final int typeChange = UndoGroupItem.typeChange;
-  static final int typeRemove = UndoGroupItem.typeRemove;
-  final Deserializer value;
-  final String key;
-  final int type;
-
-  StorageBackendUndoAction(this.type, this.key, this.value);
-}
-
-
-
-typedef bool HasValueForKeyFn(String key);
-typedef String GetValueForKeyFn(String key);
-
-class StorageBackendIterable extends IterableBase<StorageBackendDecodeEntry> {
-  final LogFile _log;
-  final Iterator<MapEntry<String, LogRange>> _ito;
-  final HasValueForKeyFn _hasCachedValue;
-  final GetValueForKeyFn _getCachedValue;
-
-  StorageBackendIterable(this._log, this._ito, this._hasCachedValue, this._getCachedValue);
-
-  Iterator<StorageBackendDecodeEntry> get iterator => StorageBackendIterator(
-    _log, _ito, _hasCachedValue, _getCachedValue,
-  );
-}
-
-class StorageBackendIterator implements Iterator<StorageBackendDecodeEntry> {
-  final LogFile _log;
-  final Iterator<MapEntry<String, LogRange>> _ito;
-  final HasValueForKeyFn hasCachedValue;
-  final GetValueForKeyFn getCachedValue;
-
-  StorageBackendIterator(this._log, this._ito, this.hasCachedValue, this.getCachedValue);
-
-  bool moveNext() => _ito.moveNext();
-
-  StorageBackendDecodeEntry get current {
-    var entry = _ito.current;
-    Deserializer deserialize;
-    if (hasCachedValue(entry.key)) {
-      var value = getCachedValue(entry.key);
-      deserialize = Deserializer(value);
-    } else {
-      deserialize = _modelDeserializerForRange(entry.value, _log);
-    }
-    return StorageBackendDecodeEntry(entry.key, deserialize);
   }
 }

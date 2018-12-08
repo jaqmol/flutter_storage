@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/serialization.dart';
+import 'package:flutter_storage/src/serialization.dart';
 import 'dart:math';
 
 void main() {
@@ -82,7 +82,7 @@ void main() {
   });
 }
 
-class Employee extends Model {
+class Employee implements Model {
   static final String type = 'employee';
   final double height;
   final String name;

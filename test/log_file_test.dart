@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/log_file.dart';
+import 'package:flutter_storage/src/log_file.dart';
 import 'dart:math';
 import 'dart:io';
 

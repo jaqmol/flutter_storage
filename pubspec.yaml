@@ -1,6 +1,6 @@
 name: flutter_storage
-description: A new Flutter package project.
-version: 0.0.1
+description: A commit-log-based database for flutter apps written in Dart.
+version: 0.8.2
 author: Ronny Reichmann <ronny.reichmann@gmail.com>
 homepage: https://github.com/jaqmol/flutter_storage
 
@@ -8,6 +8,7 @@ environment:
   sdk: ">=2.0.0-dev.68.0 <3.0.0"
 
 dependencies:
+  path: ^1.6.2
   flutter:
     sdk: flutter
 
