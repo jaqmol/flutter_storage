@@ -15,7 +15,6 @@ StorageEncodeEntry<Person> randomPerson(Random gen) {
         firstNames[gen.nextInt(firstNames.length)],
         lastNames[gen.nextInt(lastNames.length)],
       ),
-      Gender.values[gen.nextInt(Gender.values.length)],
       randomDateTime(gen),
     ),
   );
@@ -51,21 +50,18 @@ StorageEncodeEntry<Meal> randomMeal(Random gen) {
 class Person implements Model {
   static final String type = 'person';
   final FullName name;
-  final Gender gender;
   final DateTime birthday;
 
-  Person(this.name, this.gender, this.birthday);
+  Person(this.name, this.birthday);
 
-  String toString() => '$name ${gender.toString()} ${birthday.toString()}';
+  String toString() => '$name ${birthday.toString()}';
 
   Person copyWith({
     FullName name,
-    Gender gender,
     DateTime birthday,
     String favoritMealId,
   }) => Person(
     name ?? this.name,
-    gender ?? this.gender,
     birthday ?? this.birthday,
   );
 
@@ -73,7 +69,6 @@ class Person implements Model {
     (serialize ?? Serializer(type))
       .string(name.first)
       .string(name.last)
-      .integer(gender.index)
       .string(birthday.toIso8601String());
 
   Person.decode(Deserializer deserialize)
@@ -81,29 +76,8 @@ class Person implements Model {
         deserialize.string(),
         deserialize.string(),
       ),
-      gender = Gender.values[deserialize.integer()],
       birthday = DateTime.parse(deserialize.string());
 }
-
-// class Person extends Model {
-//   static final String type = 'person';
-//   final String firstName;
-//   final String lastName;
-//   final DateTime birthday;
-
-//   Person(this.firstName, this.lastName, this.birthday);
-
-//   Serializer encode([Serializer serialize]) =>
-//     (serialize ?? Serializer(type))
-//       .string(firstName)
-//       .string(lastName)
-//       .string(birthday.toIso8601String());
-
-//   Person.decode(Deserializer deserialize)
-//     : firstName = deserialize.string(),
-//       lastName = deserialize.string(),
-//       birthday = DateTime.parse(deserialize.string());
-// }
 
 class FullName {
   final String first;
@@ -114,12 +88,6 @@ class FullName {
   String toString() {
     return '$first $last';
   }
-}
-
-enum Gender {
-  female,
-  meta,
-  male,
 }
 
 enum Staple {

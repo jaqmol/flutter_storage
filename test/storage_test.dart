@@ -159,7 +159,6 @@ void checkPerson(Person expectedPerson, Deserializer deserialize) {
   var receivedPerson = Person.decode(deserialize);
   expect(expectedPerson.name.first, equals(receivedPerson.name.first));
   expect(expectedPerson.name.last, equals(receivedPerson.name.last));
-  expect(expectedPerson.gender, equals(receivedPerson.gender));
   expect(expectedPerson.birthday, equals(receivedPerson.birthday));
 }
 void checkMeal(Meal expectedMeal, Deserializer deserialize) {
