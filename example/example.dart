@@ -1,39 +1,48 @@
 import 'package:flutter_storage/src/serialization.dart';
 import 'package:flutter_storage/src/storage.dart';
 import 'package:flutter_storage/src/storage_entries.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'dart:math';
 
-void main() async {
+// Run this example from parent directory flutter_storage like so:
+// flutter test example/example.dart
+
+void main() {
   var rand = Random.secure();
-  // The database is backed by one file:
-  var storage = await Storage.create('my-apps-database.scl');
 
-  // Generate the houses in the street
-  var houses = List<House>.generate(
-    100, 
-    (int index) => House(index + 1, rand.nextBool()),
-  );
+  test('Illustrate basic usage of flutter_storage', () async {
+    // The database is backed by one file:
+    var storage = await Storage.create('my-apps-database.scl');
 
-  // Create the street
-  var street = Street('Cento Case Lane', houses);
+    // Generate the houses in the street
+    var houses = List<House>.generate(
+      100, 
+      (int index) => House(index + 1, rand.nextBool()),
+    );
 
-  // Save the street to the database
-  await storage.setValue(street.name, street);
+    // Create the street
+    var street = Street('Cento Case Lane', houses);
 
-  // Retrieve the saved street
-  var deserialize = await storage.value(street.name);
-  var retrievedStreet = Street.decode(deserialize);
-  // do something with the [retrievedStreet]
+    // Save the street to the database
+    await storage.setValue(street.name, street);
 
-  // Iterate all the entries
-  await for (StorageDecodeEntry entry in storage.entries) {
-    // A database can contain all kinds of entries,
-    // thus a type-check is necessary:
-    if (entry.value.meta.type == Street.type) {
-      var streetEntry = Street.decode(entry.value);
-      // do something with the [streetEntry]
+    // Retrieve the saved street
+    var deserialize = await storage.value(street.name);
+    var retrievedStreet = Street.decode(deserialize);
+    print('retrievedStreet.name: ${retrievedStreet.name}');
+    print('retrievedStreet.houses.length: ${retrievedStreet.houses.length}');
+
+    // Iterate all the entries
+    await for (StorageDecodeEntry entry in storage.entries) {
+      // A database can contain all kinds of entries,
+      // thus a type-check is necessary:
+      if (entry.value.meta.type == Street.type) {
+        var streetEntry = Street.decode(entry.value);
+        print('streetEntry.name: ${streetEntry.name}');
+        print('streetEntry.houses.length: ${streetEntry.houses.length}');
+      }
     }
-  }
+  });
 }
 
 class Street implements Model {
