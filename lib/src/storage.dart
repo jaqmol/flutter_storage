@@ -10,7 +10,7 @@ import 'identifier.dart';
 import 'dart:collection';
 import 'dart:async';
 import 'serialization.dart';
-import 'storage_entries.dart';
+import 'frontend_entries.dart';
 
 /// Flutter Storage
 /// 

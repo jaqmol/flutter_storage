@@ -1,5 +1,5 @@
 import 'serialization.dart';
-import 'storage_entries.dart';
+import 'frontend_entries.dart';
 
 abstract class ControlRequest {
   String get id;

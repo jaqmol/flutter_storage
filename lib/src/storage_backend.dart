@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'log_file.dart';
-import 'storage_entries.dart';
+import 'backend_entries.dart';
+import 'frontend_entries.dart';
 import 'serialization.dart';
 
 const String _closedErrorMsg = "Storage cannot be used after it's closed";

@@ -1,5 +1,5 @@
 import 'package:flutter_storage/src/serialization.dart';
-import 'package:flutter_storage/src/storage_entries.dart';
+import 'package:flutter_storage/src/frontend_entries.dart';
 import 'package:flutter_storage/src/identifier.dart';
 import 'dart:math';
 

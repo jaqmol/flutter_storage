@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/src/storage_entries.dart';
+import 'package:flutter_storage/src/backend_entries.dart';
 import 'package:flutter_storage/src/serialization.dart';
 import 'package:flutter_storage/src/log_file.dart';
 import 'dart:math';
