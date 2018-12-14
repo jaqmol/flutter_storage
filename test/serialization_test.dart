@@ -171,11 +171,11 @@ class OldCar extends Model {
 
   Serializer encode([Serializer serialize]) =>
     (serialize ?? Serializer(type))
-      .raw(engine.encode()())
+      .model(engine)
       .integer(seats);
 
   OldCar.decode(Deserializer deserialize)
-    : engine = Engine.decode(Deserializer(deserialize.raw())),
+    : engine = Engine.decode(deserialize),
       seats = deserialize.integer();
 }
 

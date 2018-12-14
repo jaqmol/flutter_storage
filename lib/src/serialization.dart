@@ -100,6 +100,13 @@ class Serializer {
     return _component(component);
   }
 
+  /// Serialize a [Model] instance using it's [encode(…)] method.
+  /// Handy to chain serializer calls.
+  /// 
+  Serializer model(Model model) {
+    return model.encode(this);
+  }
+
   /// Serialize a string value. The payload will be base64-encoded for storage.
   /// 
   Serializer string(String component) {

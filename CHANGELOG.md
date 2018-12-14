@@ -1,3 +1,7 @@
+## [0.8.6] - 2018/12/13
+
+* Adding Serializer.model(…) for chaining calls on a serializer.
+
 ## [0.8.4] - 2018/12/09
 
 * changing example lokation
