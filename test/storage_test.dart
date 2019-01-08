@@ -11,7 +11,7 @@ void main() {
 
   test('Storage', () async {
     var path = './storage-test-file.scl';
-    var storage = await Storage.create(path);
+    var storage = await Storage.open(path);
     var entry = randomPerson(gen);
     await storage.setValue(entry.key, entry.value);
     var deserialize = await storage.value(entry.key);
@@ -24,7 +24,7 @@ void main() {
     var expectedPeople = generatePeople(gen, 100);
     var expectedMeals = generateMeals(gen, 100);
 
-    var storage = await Storage.create(path);
+    var storage = await Storage.open(path);
 
     await storage.addEntries(expectedPeople);
     await storage.addEntries(expectedMeals);
@@ -32,8 +32,8 @@ void main() {
     await checkCountOfModelType(storage, Person.type, expectedPeople.length);
     await checkCountOfModelType(storage, Meal.type, expectedMeals.length);
 
-    await storage.flushStateAndClose();
-    storage = await Storage.create(path);
+    await storage.close();
+    storage = await Storage.open(path);
 
     await checkCountOfModelType(storage, Person.type, expectedPeople.length);
     await checkCountOfModelType(storage, Meal.type, expectedMeals.length);
@@ -49,7 +49,7 @@ void main() {
     var expectedPeople = generatePeople(gen, 100);
     var expectedMeals = generateMeals(gen, 100);
 
-    var storage = await Storage.create(path);
+    var storage = await Storage.open(path);
 
     await storage.addEntries(expectedPeople);
     await storage.addEntries(expectedMeals);
@@ -62,8 +62,8 @@ void main() {
       expect(deserialize, isNull);
     }
 
-    storage.flushStateAndClose();
-    storage = await Storage.create(path);
+    await storage.close();
+    storage = await Storage.open(path);
 
     await checkCountOfModelType(storage, Person.type, expectedPeople.length);
     await checkCountOfModelType(storage, Meal.type, expectedMeals.length - deletedMeals.length);
@@ -81,7 +81,7 @@ void main() {
     var expectedPeople = generatePeople(gen, 100);
     var expectedMeals = generateMeals(gen, 100);
 
-    var storage = await Storage.create(path);
+    var storage = await Storage.open(path);
 
     await storage.addEntries(expectedPeople);
     await storage.addEntries(expectedMeals);
@@ -105,7 +105,7 @@ void main() {
     var expectedPeople = generatePeople(gen, 100);
     var expectedMeals = generateMeals(gen, 100);
 
-    var storage = await Storage.create(path);
+    var storage = await Storage.open(path);
 
     await storage.addEntries(expectedPeople);
     await storage.addEntries(expectedMeals);

@@ -41,7 +41,7 @@ abstract class IsolateController {
   void stopIsolate() {
     assert(_isolate != null);
     _isRunning = false;
-    _isolate.kill(priority: Isolate.immediate);
+    _isolate.kill();
   }
 
   static void _initWorkerInIsolate(InitRequest request) {

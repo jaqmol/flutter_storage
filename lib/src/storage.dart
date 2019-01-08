@@ -26,12 +26,12 @@ class Storage extends IsolateController {
       _pendingSinks = HashMap<String, Sink>();
 
   
-  /// Create a Flutter Storage instance
+  /// Open a Flutter Storage instance
   /// 
   /// Provide the [path] for the file the database should
   /// be contained in.
   /// 
-  static Future<Storage> create(String path) async {
+  static Future<Storage> open(String path) async {
     var ctrl = Storage._init(path);
     await ctrl.startIsolate();
     await ctrl._sendFutureRequest<void>(InitBackendRequest(
@@ -236,12 +236,14 @@ class Storage extends IsolateController {
   /// restore it's management state, thus
   /// making opening it slower.
   /// 
-  /// Hint: always [flushStateAndClose] a storage.
+  /// Hint: always [close] a storage.
   /// 
-  Future<void> flushStateAndClose() =>
-    _sendFutureRequest<void>(FlushStateAndCloseRequest(
+  Future<void> close() async {
+    await _sendFutureRequest<void>(FlushStateAndCloseRequest(
       identifier(),
     ));
+    stopIsolate();
+  }
 
   // Private Methods
 

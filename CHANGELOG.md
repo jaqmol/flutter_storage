@@ -1,3 +1,9 @@
+## [0.8.7] - 2019/01/08
+
+* Renaming Storage.create(…) to Storage.open(…)
+* Renaming Storage.flushStateAndClose() to Storage.close()
+* Changing isolate kill priority to [beforeNextEvent]
+
 ## [0.8.6] - 2018/12/13
 
 * Adding Serializer.model(…) for chaining calls on a serializer.

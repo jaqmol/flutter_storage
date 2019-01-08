@@ -12,7 +12,7 @@ void main() {
 
   test('Illustrate basic usage of flutter_storage', () async {
     // The database is backed by one file:
-    var storage = await Storage.create('my-apps-database.scl');
+    var storage = await Storage.open('my-apps-database.scl');
 
     // Generate the houses in the street
     var houses = List<House>.generate(
