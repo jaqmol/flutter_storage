@@ -1,3 +1,7 @@
+## [0.8.8] - 2019/01/11
+
+* Discovering compaction error, extending test amd fixing error
+
 ## [0.8.7] - 2019/01/08
 
 * Renaming Storage.create(…) to Storage.open(…)
@@ -10,7 +14,7 @@
 
 ## [0.8.4] - 2018/12/09
 
-* changing example lokation
+* Changing example lokation
 
 ## [0.8.3] - 2018/12/09
 
