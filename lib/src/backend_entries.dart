@@ -152,6 +152,39 @@ class ChangesCountEntry extends ValueEntry {
     : changesCount = deserialize.integer();
 }
 
+// COMPACTION-HELPER
+
+class CompactionList {
+  final _keys = List<String>();
+  final _values = List<String>();
+
+  void operator[]= (String key, String value) {
+    assert(key != null && value != null);
+    int index = _keys.indexOf(key);
+    if (index == -1) {
+      _keys.add(key);
+      _values.add(value);
+    } else {
+      _keys[index] = key;
+      _values[index] = value;
+    }
+  }
+
+  String remove(String key) {
+    assert(key != null);
+    int index = _keys.indexOf(key);
+    if (index > -1) {
+      _keys.removeAt(index);
+      return _values.removeAt(index);
+    }
+    return null;
+  }
+
+  int get length => _keys.length;
+  List<String> get keys => _keys;
+  List<String> get values => _values;
+}
+
 // UNDO-SUPPORT
 
 class UndoStack extends ValueEntry with IterableMixin<UndoGroup>{

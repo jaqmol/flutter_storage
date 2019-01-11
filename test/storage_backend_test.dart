@@ -5,6 +5,7 @@ import 'package:flutter_storage/src/frontend_entries.dart';
 import 'dart:math';
 import 'dart:io';
 import 'test_models.dart';
+import 'dart:collection';
 
 void main() {
   var gen = Random.secure();
@@ -79,14 +80,37 @@ void main() {
     storage.flushState();
     int uncompactedLength = File(path).lengthSync();
 
-    removeRandomEntries<Meal>(gen, storage, expectedMeals, checkMealToRemove);
-    
+    var removedPeople = HashMap<String, Person>.fromEntries(
+      removeRandomEntries<Person>(gen, storage, expectedPeople, checkPersonToRemove)
+        .map<MapEntry<String, Person>>((StorageEncodeEntry<Person> pe) => MapEntry<String, Person>(pe.key, pe.value))
+    );
+    var removedMeals = HashMap<String, Meal>.fromEntries(
+      removeRandomEntries<Meal>(gen, storage, expectedMeals, checkMealToRemove)
+        .map<MapEntry<String, Meal>>((StorageEncodeEntry<Meal> pe) => MapEntry<String, Meal>(pe.key, pe.value))
+    );
+
     expect(storage.staleRatio, greaterThan(0.0));
     storage.compaction();
 
     int compactedLength = File(path).lengthSync();
-
     expect(uncompactedLength, greaterThan(compactedLength));
+
+    var remainingPeople = expectedPeople.where((StorageEncodeEntry<Person> pe) {
+      return !removedPeople.containsKey(pe.key);
+    });
+    var remainingMeals = expectedMeals.where((StorageEncodeEntry<Meal> me) {
+      return !removedMeals.containsKey(me.key);
+    });
+
+    for (StorageEncodeEntry<Person> pe in remainingPeople) {
+      Deserializer deserialize = storage.value(pe.key);
+      checkPerson(pe.value, deserialize);
+    }
+    for (StorageEncodeEntry<Meal> pe in remainingMeals) {
+      Deserializer deserialize = storage.value(pe.key);
+      checkMeal(pe.value, deserialize);
+    }
+    
     File(path).deleteSync();
   });
 
@@ -178,6 +202,14 @@ Meal checkMealToRemove(Meal expectedMeal, Deserializer deserialize) {
   expect(expectedMeal.meat, equals(removedMeal.meat));
   expect(expectedMeal.spice, equals(removedMeal.spice));
   return removedMeal;
+}
+Person checkPersonToRemove(Person expectedPerson, Deserializer deserialize) {
+  expect(deserialize.meta.type, equals(Person.type));
+  var removedPerson = Person.decode(deserialize);
+  expect(expectedPerson.name.first, equals(removedPerson.name.first));
+  expect(expectedPerson.name.last, equals(removedPerson.name.last));
+  expect(expectedPerson.birthday, equals(removedPerson.birthday));
+  return removedPerson;
 }
 
 void checkCountOfModelType(StorageBackend storage, String type, int expectedCount) {

@@ -117,6 +117,8 @@ class LogFile {
 
   String get _randomCompactionPath => _suffixedFilenamePath(path, identifier());
   String get compactionBackupPath => _suffixedFilenamePath(path, _backupSuffix);
+
+  String toString() => File(path).readAsStringSync();
 }
 
 class LogRange {

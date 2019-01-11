@@ -222,30 +222,48 @@ class StorageBackend {
   /// 
   void compaction() {
     assert(_isOpen, _closedErrorMsg);
-    var newIndex = HashMap<String, LogRange>();
-    var rawValues = HashMap<String, String>();
-    _log.compaction(
+    // _printLogFileContent('STORAGE BEFORE COMPACTION');
+    
+    var acc = CompactionList();
+    var newRanges = _log.compaction(
       map: (LogRange range, String rawVal) {
         var deserialize = Deserializer(rawVal);
         if (deserialize.meta.type == ChangeValueEntry.type) {
           var entry = ChangeValueEntry.decode(deserialize);
-          rawValues[entry.key] = rawVal;
-          newIndex[entry.key] = range;
+          acc[entry.key] = rawVal;
         } else if (deserialize.meta.type == RemoveValueEntry.type) {
           var entry = RemoveValueEntry.decode(deserialize);
-          rawValues.remove(entry.key);
-          newIndex.remove(entry.key);
+          acc.remove(entry.key);
         }
       },
-      reduce: () => rawValues.values,
+      reduce: () => acc.values,
     );
     _changesCount = 0;
     _index.clear();
-    _index.addAll(newIndex);
     _undoStack.clear();
     _cache.clear();
-    flushState();
+    
+    var indexEntries = List<MapEntry<String, LogRange>>.generate(
+      acc.length,
+      (int index) => MapEntry(
+        acc.keys[index],
+        newRanges[index],
+      ),
+    );
+    _index.addEntries(indexEntries);
+
+    // _printLogFileContent('STORAGE AFTER COMPACTION');
   }
+
+  // void _printLogFileContent(String message) {
+  //   var now = DateTime.now();
+  //   print('--------------------------------------------------------------------------------');
+  //   if (message != null) print(message);
+  //   print('-------------------- Begin storage print @${now.toIso8601String()} --------------------');
+  //   print(_log.toString());
+  //   print('-------------------- End storage print @${now.toIso8601String()} --------------------');
+  //   print('--------------------------------------------------------------------------------');
+  // }
 
   /// Get the stale data ratio
   /// 
