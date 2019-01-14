@@ -1,16 +1,22 @@
+## [0.8.9] - 2019/01/14
+
+* Adding `closeAndOpen(…)` method, allowing for:
+  * Reuse of storage and isolate.
+  * Minimizing respawn-time if requirement is: 1 open storage at a time.
+
 ## [0.8.8] - 2019/01/11
 
-* Discovering compaction error, extending test amd fixing error
+* Discovering compaction error, extending test amd fixing error.
 
 ## [0.8.7] - 2019/01/08
 
-* Renaming Storage.create(…) to Storage.open(…)
-* Renaming Storage.flushStateAndClose() to Storage.close()
-* Changing isolate kill priority to [beforeNextEvent]
+* Renaming `Storage.create(…)` to `Storage.open(…)`
+* Renaming `Storage.flushStateAndClose()` to `Storage.close()`
+* Changing isolate kill priority to `beforeNextEvent(…)`
 
 ## [0.8.6] - 2018/12/13
 
-* Adding Serializer.model(…) for chaining calls on a serializer.
+* Adding `Serializer.model(…)` for chaining calls on a serializer.
 
 ## [0.8.4] - 2018/12/09
 

@@ -14,11 +14,11 @@ class StorageBackend {
   final HashMap<String, LogRange> _index;
   final HashMap<String, String> _cache;
   int _openUndoGroupsCount = 0;
-  final UndoStack _undoStack;
+  UndoStack _undoStack;
   UndoGroup _openUndoGroup;
   int _changesCount = 0;
-  final LogFile _log;
-  final String path;
+  LogFile _log;
+  String path;
   bool _isOpen;
   
   StorageBackend(this.path /*, [this.fromFrontend, this.toFrontend]*/)
@@ -220,10 +220,16 @@ class StorageBackend {
   /// Compaction is the process of reducing all logged
   /// key-value-pairs to the most recent state.
   /// 
+  /// Usually used before closing a storage:
+  ///   1. Check [needsCompaction], if true continue:
+  ///   2. Perform [compaction()] and
+  ///   3. Conclude with [close()] or [closeAndOpen()].
+  /// 
+  /// Other situation appropriate for compaction:
+  /// After operating system memory warning.
+  /// 
   void compaction() {
-    assert(_isOpen, _closedErrorMsg);
-    // _printLogFileContent('STORAGE BEFORE COMPACTION');
-    
+    assert(_isOpen, _closedErrorMsg);    
     var acc = CompactionList();
     var newRanges = _log.compaction(
       map: (LogRange range, String rawVal) {
@@ -251,19 +257,7 @@ class StorageBackend {
       ),
     );
     _index.addEntries(indexEntries);
-
-    // _printLogFileContent('STORAGE AFTER COMPACTION');
   }
-
-  // void _printLogFileContent(String message) {
-  //   var now = DateTime.now();
-  //   print('--------------------------------------------------------------------------------');
-  //   if (message != null) print(message);
-  //   print('-------------------- Begin storage print @${now.toIso8601String()} --------------------');
-  //   print(_log.toString());
-  //   print('-------------------- End storage print @${now.toIso8601String()} --------------------');
-  //   print('--------------------------------------------------------------------------------');
-  // }
 
   /// Get the stale data ratio
   /// 
@@ -360,12 +354,42 @@ class StorageBackend {
   /// restore it's management state, thus
   /// making opening it slower.
   /// 
-  /// Hint: always [flushStateAndClose] a storage.
+  /// Hint: always [close] a storage.
   /// 
-  void flushStateAndClose() {
+  void close() {
     assert(_isOpen, _closedErrorMsg);
     _isOpen = false;
     flushState();
     _log.flushAndClose();
+  }
+
+  /// Close currently open storage and open other path.
+  /// 
+  /// Before opening the other path the currently open
+  /// storage's state is flushed and closed.
+  /// 
+  /// *Don't call [closeAndOpen] while undo groups are open.*
+  /// 
+  /// After method concludes storage is reading 
+  /// from and writing to new path.
+  /// 
+  void closeAndOpen(String newPath) {
+    assert(_isOpen, _closedErrorMsg);
+
+    // Closing operations must reflect [close]
+    flushState();
+    _log.flushAndClose();
+
+    // Reset internal state
+    path = newPath;
+    _changesCount = 0;
+    _index.clear();
+    _undoStack.clear();
+    _cache.clear();
+    _openUndoGroupsCount = 0;
+    _undoStack = UndoStack();
+    _openUndoGroup = null;
+    _log = LogFile(path);
+    _initState();
   }
 }

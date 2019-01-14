@@ -173,8 +173,15 @@ class FlushStateRequest extends ControlRequest {
   FlushStateRequest(this.id);
 }
 
-class FlushStateAndCloseRequest extends ControlRequest {
+class CloseRequest extends ControlRequest {
   final String id;
 
-  FlushStateAndCloseRequest(this.id);
+  CloseRequest(this.id);
+}
+
+class CloseAndOpenRequest extends ControlRequest {
+  final String id;
+  final String path;
+
+  CloseAndOpenRequest(this.id, this.path);
 }

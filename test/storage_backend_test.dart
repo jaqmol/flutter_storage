@@ -23,7 +23,7 @@ void main() {
     checkCountOfModelType(storage, Person.type, expectedPeople.length);
     checkCountOfModelType(storage, Meal.type, expectedMeals.length);
 
-    storage.flushStateAndClose();
+    storage.close();
     storage = StorageBackend(path);
 
     checkCountOfModelType(storage, Person.type, expectedPeople.length);
@@ -53,7 +53,7 @@ void main() {
       expect(deserialize, isNull);
     }
 
-    storage.flushStateAndClose();
+    storage.close();
     storage = StorageBackend(path);
 
     checkCountOfModelType(storage, Person.type, expectedPeople.length);
@@ -143,6 +143,30 @@ void main() {
     checkRandomEntry<Meal>(gen, storage, expectedMeals, checkMeal);
     
     File(path).deleteSync();
+  });
+
+  test("StorageBackend Close and Open", () {
+    var path1 = './storage-test-file-close-and-open-1.scl';
+    var path2 = './storage-test-file-close-and-open-2.scl';
+    var expectedPeopleFor1 = generatePeople(gen, 5);
+    var expectedMealsFor1 = generateMeals(gen, 13);
+
+    var storage = StorageBackend(path1);
+    storage.addEntries(expectedPeopleFor1);
+    storage.closeAndOpen(path2);
+    storage.addEntries(expectedMealsFor1);
+
+    storage.closeAndOpen(path1);
+    checkCountOfModelType(storage, Person.type, expectedPeopleFor1.length);
+    checkRandomEntry<Person>(gen, storage, expectedPeopleFor1, checkPerson);
+    
+    storage.closeAndOpen(path2);
+    checkCountOfModelType(storage, Meal.type, expectedMealsFor1.length);
+    checkRandomEntry<Meal>(gen, storage, expectedMealsFor1, checkMeal);
+
+    storage.close();
+    File(path1).deleteSync();
+    File(path2).deleteSync();
   });
 }
 

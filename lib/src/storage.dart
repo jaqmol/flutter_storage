@@ -169,6 +169,11 @@ class Storage extends IsolateController {
   /// Compaction is the process of reducing all logged
   /// key-value-pairs to the most recent state.
   /// 
+  /// Usually used before closing a storage:
+  ///   1. Check [needsCompaction], if true continue:
+  ///   2. Perform [compaction()] and
+  ///   3. Conclude with [close()] or [closeAndOpen(…)].
+  /// 
   Future<void> compaction() =>
     _sendFutureRequest<void>(CompactionRequest(
       identifier(),
@@ -239,10 +244,27 @@ class Storage extends IsolateController {
   /// Hint: always [close] a storage.
   /// 
   Future<void> close() async {
-    await _sendFutureRequest<void>(FlushStateAndCloseRequest(
+    await _sendFutureRequest<void>(CloseRequest(
       identifier(),
     ));
     stopIsolate();
+  }
+
+  /// Close currently open storage and open other path.
+  /// 
+  /// Before opening the other path the currently open
+  /// storage's state is flushed and closed.
+  /// 
+  /// *Don't call [closeAndOpen] while undo groups are open.*
+  /// 
+  /// After method concludes storage is reading 
+  /// from and writing to new path.
+  /// 
+  Future<void> closeAndOpen(String newPath) async {
+    await _sendFutureRequest<void>(CloseAndOpenRequest(
+      identifier(),
+      newPath,
+    ));
   }
 
   // Private Methods
@@ -411,8 +433,12 @@ class _BackendWorker extends IsolateWorker {
       _backend.flushState();
       _sendRequestConclusion(request);
 
-    } else if (request is FlushStateAndCloseRequest) {
-      _backend.flushStateAndClose();
+    } else if (request is CloseRequest) {
+      _backend.close();
+      _sendRequestConclusion(request);
+
+    } else if (request is CloseAndOpenRequest) {
+      _backend.closeAndOpen(request.path);
       _sendRequestConclusion(request);
     }
   }
