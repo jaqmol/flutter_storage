@@ -338,7 +338,11 @@ class StorageBackend {
   /// Thus a storage can be opened fast and does not
   /// need to be replay the complete log.
   /// 
+  /// If there's no change, no flush 
+  /// will be performed.
+  /// 
   void flushState() {
+    if (_changesCount == 0) return;
     var entry = StorageStateEntry(
       changesCount: _changesCount,
       indexEntries: _index.entries.toList(),
