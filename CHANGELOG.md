@@ -1,3 +1,7 @@
+## [0.9.1] - 2019/01/15
+
+* Making `closeAndOpen(…)` returning `this` on conclude.
+
 ## [0.9.0] - 2019/01/14
 
 * Making `flushState(…)` conditional, so that in case no change occurred, nothing will be written to disk.

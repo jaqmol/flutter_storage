@@ -260,11 +260,12 @@ class Storage extends IsolateController {
   /// After method concludes storage is reading 
   /// from and writing to new path.
   /// 
-  Future<void> closeAndOpen(String newPath) async {
+  Future<Storage> closeAndOpen(String newPath) async {
     await _sendFutureRequest<void>(CloseAndOpenRequest(
       identifier(),
       newPath,
     ));
+    return this;
   }
 
   // Private Methods
