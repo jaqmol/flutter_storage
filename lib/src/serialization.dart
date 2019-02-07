@@ -145,7 +145,7 @@ class Serializer {
   /// of the collection.
   /// 
   Serializer collection<T>(
-    List<T> components,
+    Iterable<T> components,
     void encodeFn(Serializer s, T item),
   ) {
     integer(components.length);

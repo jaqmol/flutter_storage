@@ -1,3 +1,7 @@
+## [0.9.2] - 2019/02/07
+
+* Making `Serializer.collection(…)` accept `Iterables`.
+
 ## [0.9.1] - 2019/01/15
 
 * Making `closeAndOpen(…)` returning `this` on conclude.
