@@ -39,7 +39,7 @@ class SetValueRequest extends ControlRequest {
 
 class AddEntriesRequest extends ControlRequest {
   final String id;
-  final Iterable<StorageEncodeEntry> entries;
+  final List<StorageEncodeEntry> entries;
 
   AddEntriesRequest(this.id, this.entries);
 }

@@ -1,3 +1,7 @@
+## [0.9.3] - 2019/03/10
+
+* Asserting list type for `Storage.addEntries(…)`.
+
 ## [0.9.2] - 2019/02/07
 
 * Making `Serializer.collection(…)` accept `Iterables`.

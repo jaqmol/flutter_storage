@@ -70,11 +70,13 @@ class Storage extends IsolateController {
   /// The key-value-pairs need to be provided as iterable
   /// of [StorageEncodeEntry]s.
   /// 
-  Future<void> addEntries(Iterable<StorageEncodeEntry> entries) =>
-    _sendFutureRequest<void>(AddEntriesRequest(
+  Future<void> addEntries(List<StorageEncodeEntry> entries) {
+    assert(entries is List<StorageEncodeEntry>);
+    return _sendFutureRequest<void>(AddEntriesRequest(
       identifier(),
       entries,
-    ));
+    )); 
+  }
 
   /// Get a value deserializer for the given key.
   /// 
