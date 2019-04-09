@@ -3,30 +3,31 @@ import 'package:meta/meta.dart';
 import 'log_file.dart';
 import 'dart:collection';
 import 'frontend_entries.dart';
+import 'log_range.dart';
 
 typedef bool HasValueForKeyFn(String key);
 typedef String GetValueForKeyFn(String key);
 
-class StorageBackendIterable extends IterableBase<StorageDecodeEntry> {
+class StorageIterable extends IterableBase<StorageDecodeEntry> {
   final LogFile _log;
   final Iterator<MapEntry<String, LogRange>> _ito;
   final HasValueForKeyFn _hasCachedValue;
   final GetValueForKeyFn _getCachedValue;
 
-  StorageBackendIterable(this._log, this._ito, this._hasCachedValue, this._getCachedValue);
+  StorageIterable(this._log, this._ito, this._hasCachedValue, this._getCachedValue);
 
-  Iterator<StorageDecodeEntry> get iterator => StorageBackendIterator(
+  Iterator<StorageDecodeEntry> get iterator => StorageIterator(
     _log, _ito, _hasCachedValue, _getCachedValue,
   );
 }
 
-class StorageBackendIterator implements Iterator<StorageDecodeEntry> {
+class StorageIterator implements Iterator<StorageDecodeEntry> {
   final LogFile _log;
   final Iterator<MapEntry<String, LogRange>> _ito;
   final HasValueForKeyFn hasCachedValue;
   final GetValueForKeyFn getCachedValue;
 
-  StorageBackendIterator(this._log, this._ito, this.hasCachedValue, this.getCachedValue);
+  StorageIterator(this._log, this._ito, this.hasCachedValue, this.getCachedValue);
 
   bool moveNext() => _ito.moveNext();
 

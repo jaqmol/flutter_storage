@@ -1,81 +1,76 @@
-/*
-  Frontend that established isolate and provides messaging with the backend.
-*/
-
-import 'isolate_controller.dart';
-import 'dart:isolate';
-import 'control_messages.dart';
-import 'storage_backend.dart';
-import 'identifier.dart';
 import 'dart:collection';
-import 'dart:async';
-import 'serialization.dart';
+import 'log_file.dart';
+import 'backend_entries.dart';
 import 'frontend_entries.dart';
+// import 'serialization.dart';
+import 'log_line.dart';
+import 'log_range.dart';
+import 'log_line_serializer.dart';
+import 'serializer.dart';
+import 'model.dart';
 
-/// Flutter Storage
+const String _closedErrorMsg = "Storage cannot be used after it's closed";
+
+/// Storage
 /// 
-/// Storage frontend for commit log based database.
+/// Backing store for commit log with map-interface.
 /// 
-class Storage extends IsolateController {
-  final String path;
-  final HashMap<String, Completer> _pendingCompleters;
-  final HashMap<String, Sink> _pendingSinks;
-
-  Storage._init(this.path)
-    : _pendingCompleters = HashMap<String, Completer>(),
-      _pendingSinks = HashMap<String, Sink>();
-
+class Storage {
+  final HashMap<String, LogRange> _index;
+  final HashMap<String, String> _cache;
+  int _openUndoGroupsCount = 0;
+  UndoStack _undoStack;
+  UndoGroup _openUndoGroup;
+  int _changesCount = 0;
+  LogFile _log;
+  String path;
+  bool _isOpen;
   
-  /// Open a Flutter Storage instance
-  /// 
-  /// Provide the [path] for the file the database should
-  /// be contained in.
-  /// 
-  static Future<Storage> open(String path) async {
-    var ctrl = Storage._init(path);
-    await ctrl.startIsolate();
-    await ctrl._sendFutureRequest<void>(InitBackendRequest(
-      identifier(),
-      path,
-    ));
-    return ctrl;
-  }
+  Storage(this.path /*, [this.fromFrontend, this.toFrontend]*/)
+    : _index = HashMap<String, LogRange>(),
+      _cache = HashMap<String, String>(),
+      _undoStack = UndoStack(),
+      _log = LogFile(path),
+      _isOpen = true {
+        _initState();
+      }
 
-  InitIsolateWorker initIsolateWorkerFn() => _BackendWorker.create;
-
-  void receiveMessage(dynamic message) {
-    if (message is ControlResponse) {
-      _processControlResponse(message);
-    }
-  }
-
-  // Frontend API
-
-  /// Sets the given value for the given key.
+  /// Sets the given model for the given key.
   /// 
   /// Logs the change to the underlaying file.
   /// Keeps the value in the cache until [clearCache] is called.
   /// To make a batch of changes undoable, wrap them in both:
   /// [openUndoGroup] and [closeUndoGroup].
   /// 
-  Future<void> setValue(String key, Model model) =>
-    _sendFutureRequest<void>(SetValueRequest(
-      identifier(),
-      key,
-      model,
-    ));
+  // void operator[]= (String key, Model model) {
+  void setModel(String key, Model model) {
+    assert(_isOpen, _closedErrorMsg);
+    var lls = _log.lineSerializer(key);
+    lls = lls.model(model);
+    var subsequentRange = lls.conclude();
+    var previousRange = _index[key];
+    if (previousRange != null) {
+      // If undos are logged right away, the undo
+      // stack becomes difficult to manage.
+      if (_openUndoGroup != null) {
+        _openUndoGroup.add(UndoRangeItem.change(key, previousRange));
+      }
+      _changesCount++;
+    }
+    _index[key] = subsequentRange;
+    // _cache[key] = encodedModel; // TODO: fill cache on read, keep cache at 100 entries
+  }
 
   /// Adding a collection of key-value-pairs.
   /// 
   /// The key-value-pairs need to be provided as iterable
   /// of [StorageEncodeEntry]s.
   /// 
-  Future<void> addEntries(List<StorageEncodeEntry> entries) {
-    assert(entries is List<StorageEncodeEntry>);
-    return _sendFutureRequest<void>(AddEntriesRequest(
-      identifier(),
-      entries,
-    )); 
+  void addEntries(Iterable<StorageEncodeEntry> entries) {
+    for (StorageEncodeEntry entry in entries) {
+      // this[entry.key] = entry.value;
+      setValue(entry.key, entry.value);
+    }
   }
 
   /// Get a value deserializer for the given key.
@@ -83,22 +78,42 @@ class Storage extends IsolateController {
   /// Check the deserializer's meta field for the
   /// type of the model for decoding.
   /// 
-  Future<Deserializer> value(String key) =>
-    _sendFutureRequest<Deserializer>(ValueRequest(
-      identifier(),
-      key,
-    ));
+  // Deserializer operator[] (String key) {
+  Deserializer model(String key) {
+    assert(_isOpen, _closedErrorMsg);
+    Deserializer value;
+    if (_cache.containsKey(key)) {
+      value = Deserializer(_cache[key]);
+    } else {
+      LogRange range = _index[key];
+      if (range != null) {
+        value = modelDeserializerForRange(range, _log, key, _cache);
+      }
+    }
+    return value;
+  }
 
   /// Get a value deserializer for the given key.
   /// 
   /// Check the deserializer's meta field for the
   /// type of the model for decoding.
   /// 
-  Future<Deserializer> remove(String key) =>
-    _sendFutureRequest<Deserializer>(RemoveRequest(
-      identifier(),
-      key,
-    ));
+  Deserializer remove(String key) {
+    assert(_isOpen, _closedErrorMsg);
+    var range = _index.remove(key);
+    // If undos are logged right away, the undo
+    // stack becomes difficult to manage.
+    if (_openUndoGroup != null) {
+      _openUndoGroup.add(UndoRangeItem.remove(key, range));
+    }
+    var deserialize = modelDeserializerForRange(range, _log);
+    var removeEntry = RemoveValueEntry(key);
+    _log.appendLine(removeEntry.encode()());
+    _index.remove(key);
+    _cache.remove(key);
+    _changesCount++;
+    return deserialize;
+  }
 
   // Undo Support
 
@@ -112,10 +127,18 @@ class Storage extends IsolateController {
   /// The current undo group will be concluded only after
   /// the last balancing call to [closeUndoGroup].
   /// 
-  Future<void> openUndoGroup() =>
-    _sendFutureRequest<void>(OpenUndoGroupRequest(
-      identifier(),
-    ));
+  void openUndoGroup() {
+    bool noGroupOpen = _openUndoGroup == null && _openUndoGroupsCount == 0;
+    bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
+    assert(noGroupOpen || groupsOpen, "Undo groups must be balanced");
+    if (noGroupOpen) {
+      _openUndoGroup = UndoGroup();
+      _openUndoGroupsCount = 1;
+      _undoStack.push(_openUndoGroup);
+    } else if (groupsOpen) {
+      _openUndoGroupsCount++;
+    }
+  }
 
   /// Close an undo group to conclude an undoable collection of changes.
   /// 
@@ -127,10 +150,15 @@ class Storage extends IsolateController {
   /// The current undo group will be concluded only after
   /// the last balancing call to [closeUndoGroup].
   /// 
-  Future<void> closeUndoGroup() =>
-    _sendFutureRequest<void>(CloseUndoGroupRequest(
-      identifier(),
-    ));
+  void closeUndoGroup() {
+    bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
+    assert(groupsOpen, "Undo groups must be balanced");
+    _openUndoGroupsCount--;
+    bool lastGroupClosed = _openUndoGroupsCount == 0 && _openUndoGroup != null;
+    if (lastGroupClosed) {
+      _openUndoGroup = null;
+    }
+  }
 
   /// Undo all changes made in an undo group;
   /// 
@@ -138,33 +166,56 @@ class Storage extends IsolateController {
   /// all [UndoAction]s for the user to 
   /// further process undo actions.
   /// 
-  Future<List<UndoAction>> undo() {
-    var request = UndoRequest(identifier());
-    return _sendFutureRequest<List<UndoAction>>(request);
+  List<UndoAction> undo() {
+    var group = _undoStack.pop();
+    var actions = List<UndoAction>();
+    for (UndoRangeItem item in group) {
+      // Change and Remove have the same effect on index and cache
+      _index[item.key] = item.range;
+      _cache.remove(item.key);
+      actions.add(UndoAction(
+        item.undoType,
+        item.key,
+        value(item.key),
+      ));
+    }
+    return actions;
   }
+
+
 
   // Iteration Support
 
   /// Iterate keys and values
   /// 
-  Stream<StorageDecodeEntry> get entries {
-    var request = EntriesRequest(identifier());
-    return _sendStreamRequest<StorageDecodeEntry>(request);
+  Iterable<StorageDecodeEntry> get entries {
+    assert(_isOpen, _closedErrorMsg);
+    return StorageIterable(
+      _log, _index.entries.iterator,
+      (String key) => _cache.containsKey(key),
+      (String key) => _cache[key],
+    );
   }
 
   /// Iterate keys only
   /// 
-  Stream<String> get keys =>
-    _sendStreamRequest<String>(KeysRequest(
-      identifier(),
-    ));
+  Iterable<String> get keys {
+    assert(_isOpen, _closedErrorMsg);
+    return _index.keys;
+  }
 
   /// Iterate values only
   /// 
-  Stream<Deserializer> get values =>
-    _sendStreamRequest<Deserializer>(ValuesRequest(
-      identifier(),
-    ));
+  Iterable<Deserializer> get values {
+    assert(_isOpen, _closedErrorMsg);
+    return _index.entries.map((MapEntry<String, LogRange> entry) {
+      if (_cache.containsKey(entry.key)) {
+        return Deserializer(_cache[entry.key]);
+      } else {
+        return modelDeserializerForRange(entry.value, _log);
+      }
+    });
+  }
 
   /// Perform compaction
   /// 
@@ -174,12 +225,41 @@ class Storage extends IsolateController {
   /// Usually used before closing a storage:
   ///   1. Check [needsCompaction], if true continue:
   ///   2. Perform [compaction()] and
-  ///   3. Conclude with [close()] or [closeAndOpen(…)].
+  ///   3. Conclude with [close()] or [closeAndOpen()].
   /// 
-  Future<void> compaction() =>
-    _sendFutureRequest<void>(CompactionRequest(
-      identifier(),
-    ));
+  /// Other situation appropriate for compaction:
+  /// After operating system memory warning.
+  /// 
+  void compaction() {
+    assert(_isOpen, _closedErrorMsg);    
+    var acc = CompactionList();
+    var newRanges = _log.compaction(
+      map: (LogRange range, String rawVal) {
+        var deserialize = Deserializer(rawVal);
+        if (deserialize.meta.type == ChangeValueEntry.type) {
+          var entry = ChangeValueEntry.decode(deserialize);
+          acc[entry.key] = rawVal;
+        } else if (deserialize.meta.type == RemoveValueEntry.type) {
+          var entry = RemoveValueEntry.decode(deserialize);
+          acc.remove(entry.key);
+        }
+      },
+      reduce: () => acc.values,
+    );
+    _changesCount = 0;
+    _index.clear();
+    _undoStack.clear();
+    _cache.clear();
+    
+    var indexEntries = List<MapEntry<String, LogRange>>.generate(
+      acc.length,
+      (int index) => MapEntry(
+        acc.keys[index],
+        newRanges[index],
+      ),
+    );
+    _index.addEntries(indexEntries);
+  }
 
   /// Get the stale data ratio
   /// 
@@ -199,30 +279,59 @@ class Storage extends IsolateController {
   /// Stale data can be used to undo changes.
   /// Compaction removes stale data.
   ///
-  Future<double> get staleRatio =>
-    _sendFutureRequest<double>(StaleRatioRequest(
-      identifier(),
-    ));
+  double get staleRatio {
+    assert(_isOpen, _closedErrorMsg);
+    return _changesCount.toDouble() / _index.length.toDouble();
+  }
 
   /// Check if storage needs compaction
   /// 
   /// Returns true in case the storage needs compaction.
   /// The treshold [staleRatio] is 0.5.
   /// 
-  Future<bool> get needsCompaction =>
-    _sendFutureRequest<bool>(NeedsCompactionRequest(
-      identifier(),
-    ));
+  bool get needsCompaction {
+    assert(_isOpen, _closedErrorMsg);
+    return staleRatio >= 0.5;
+  }
+
+  void _initState() {
+    var value = _log.lastLine;
+    if (value == null) return;
+    if (value.length > 0) {
+      var deserialize = Deserializer(value);
+      if (deserialize.meta.type == StorageStateEntry.type) {
+        print('Using the previous state');
+        var entry = StorageStateEntry.decode(deserialize);
+        _changesCount = entry.changesCount;
+        _index.addEntries(entry.indexEntries);
+      } else _rebuildState();
+    } else _rebuildState();
+  }
+
+  void _rebuildState() {
+    for (LogLine ll in _log.replay) {
+      var deserialize = Deserializer(ll.data);
+      if (deserialize.meta.type == ChangeValueEntry.type) {
+        var entry = ChangeValueEntry.decode(deserialize);
+        _index[entry.key] = ll.range;
+      } else if (deserialize.meta.type == RemoveValueEntry.type) {
+        var entry = RemoveValueEntry.decode(deserialize);
+        _index.remove(entry.key);
+      } else if (deserialize.meta.type == ChangesCountEntry.type) {
+        var entry = ChangesCountEntry.decode(deserialize);
+        _changesCount = entry.changesCount;
+      }
+    }
+  }
 
   /// Clears the in-memory-cache of storage
   /// 
   /// Removes all cached values. Does not affect indexes
   /// as indexes are always kept in memory.
   /// 
-  Future<void> clearCache() =>
-    _sendFutureRequest<void>(ClearCacheRequest(
-      identifier(),
-    ));
+  void clearCache() {
+    _cache.clear();
+  }
 
   /// Flush state of storage to solid state.
   /// 
@@ -231,10 +340,19 @@ class Storage extends IsolateController {
   /// Thus a storage can be opened fast and does not
   /// need to be replay the complete log.
   /// 
-  Future<void> flushState() =>
-    _sendFutureRequest<void>(FlushStateRequest(
-      identifier(),
-    ));
+  /// If there's no change, no flush 
+  /// will be performed.
+  /// 
+  void flushState() {
+    if (_changesCount == 0) return;
+    var entry = StorageStateEntry(
+      changesCount: _changesCount,
+      indexEntries: _index.entries.toList(),
+      undoStack: _undoStack,
+    );
+    _log.appendLine(entry.encode()());
+    _log.flush();
+  }
 
   /// Flush state of storage and close.
   /// 
@@ -245,11 +363,12 @@ class Storage extends IsolateController {
   /// 
   /// Hint: always [close] a storage.
   /// 
-  Future<void> close() async {
-    await _sendFutureRequest<void>(CloseRequest(
-      identifier(),
-    ));
-    stopIsolate();
+  void close() {
+    assert(_isOpen, _closedErrorMsg);
+    _isOpen = false;
+    flushState();
+    // _log.flushAndClose();
+    _log.close();
   }
 
   /// Close currently open storage and open other path.
@@ -262,194 +381,24 @@ class Storage extends IsolateController {
   /// After method concludes storage is reading 
   /// from and writing to new path.
   /// 
-  Future<Storage> closeAndOpen(String newPath) async {
-    await _sendFutureRequest<void>(CloseAndOpenRequest(
-      identifier(),
-      newPath,
-    ));
-    return this;
-  }
+  void closeAndOpen(String newPath) {
+    assert(_isOpen, _closedErrorMsg);
 
-  // Private Methods
+    // Closing operations must reflect [close]
+    flushState();
+    // _log.flushAndClose();
+    _log.close();
 
-  Future<T> _sendFutureRequest<T>(ControlRequest req) {
-    var completer = Completer<T>();
-    _pendingCompleters[req.id] = completer;
-    sendMessage(req);
-    return completer.future;
-  }
-
-  Stream<T> _sendStreamRequest<T>(ControlRequest req) {
-    var sink = StreamController<T>();
-    _pendingSinks[req.id] = sink;
-    sendMessage(req);
-    return sink.stream;
-  }
-
-  void _processControlResponse(ControlResponse response) {
-    if (response is RequestConclusion) {
-      _complete<void>(response.id, null);
-
-    } else if (response is RemoveResponse) {
-      _complete<Deserializer>(response.id, response.value);
-
-    } else if (response is ValueResponse) {
-      _complete<Deserializer>(response.id, response.value);
-
-    } else if (response is UndoResponse) {
-      _complete<List<UndoAction>>(response.id, response.actions);
-
-    } else if (response is EntriesResponse) {
-      _addToSink<StorageDecodeEntry>(response.id, response.entry);
-
-    } else if (response is KeysResponse) {
-      _addToSink<String>(response.id, response.key);
-
-    } else if (response is ValuesResponse) {
-      _addToSink<Deserializer>(response.id, response.deserialize);
-
-    } else if (response is CloseSinkResponse) {
-      _closeSink(response.id);
-
-    } else if (response is StaleRatioResponse) {
-      _complete<double>(response.id, response.staleRatio);
-
-    } else if (response is NeedsCompactionResponse) {
-      _complete<bool>(response.id, response.needsCompaction);
-    }
-  }
-
-  void _complete<T>(String id, T value) {
-    Completer<T> completer = _pendingCompleters[id];
-    completer.complete(value);
-    _pendingCompleters.remove(id);
-  }
-
-  void _addToSink<T>(String id, T value) {
-    Sink<T> sink = _pendingSinks[id];
-    sink.add(value);
-  }
-
-  void _closeSink(String id) {
-    Sink sink = _pendingSinks[id];
-    sink.close();
-    _pendingCompleters.remove(id);
+    // Reset internal state
+    path = newPath;
+    _changesCount = 0;
+    _index.clear();
+    _undoStack.clear();
+    _cache.clear();
+    _openUndoGroupsCount = 0;
+    _undoStack = UndoStack();
+    _openUndoGroup = null;
+    _log = LogFile(path);
+    _initState();
   }
 }
-
-class _BackendWorker extends IsolateWorker {
-  StorageBackend _backend;
-
-  _BackendWorker(SendPort fromWorkerPort) : super(fromWorkerPort);
-  
-  static _BackendWorker create(SendPort fromWorkerPort) =>
-    _BackendWorker(fromWorkerPort);
-
-  void receiveMessage(dynamic message) {
-    if (message is ControlRequest) {
-      _processControlRequest(message);
-    }
-  }
-
-  void _processControlRequest(ControlRequest request) {
-    if (_backend == null && request is InitBackendRequest) {
-      _backend = StorageBackend(request.path);
-      _sendRequestConclusion(request);
-      return;
-    }
-    assert(_backend != null);
-
-    if (request is SetValueRequest) {
-      _backend.setValue(request.key, request.value);
-      _sendRequestConclusion(request);
-
-    } else if (request is AddEntriesRequest) {
-      _backend.addEntries(request.entries);
-      _sendRequestConclusion(request);
-
-    } else if (request is ValueRequest) {
-      sendMessage(ValueResponse(
-        request.id,
-        _backend.value(request.key),
-      ));
-
-    } else if (request is RemoveRequest) {
-      sendMessage(RemoveResponse(
-        request.id,
-        _backend.remove(request.key),
-      ));
-
-    } else if (request is OpenUndoGroupRequest) {
-      _backend.openUndoGroup();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseUndoGroupRequest) {
-      _backend.closeUndoGroup();
-      _sendRequestConclusion(request);
-
-    } else if (request is UndoRequest) {
-      var response = UndoResponse(
-        request.id, 
-        _backend.undo(),
-      );
-      sendMessage(response);
-
-    } else if (request is EntriesRequest) {
-      for (StorageDecodeEntry entry in _backend.entries) {
-        sendMessage(EntriesResponse(request.id, entry));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is KeysRequest) {
-      for (String key in _backend.keys) {
-        sendMessage(KeysResponse(request.id, key));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is ValuesRequest) {
-      for (Deserializer deserialize in _backend.values) {
-        sendMessage(ValuesResponse(request.id, deserialize));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is CompactionRequest) {
-      _backend.compaction();
-      _sendRequestConclusion(request);
-
-    } else if (request is StaleRatioRequest) {
-      sendMessage(StaleRatioResponse(
-        request.id, 
-        _backend.staleRatio,
-      ));
-
-    } else if (request is NeedsCompactionRequest) {
-      sendMessage(NeedsCompactionResponse(
-        request.id, 
-        _backend.needsCompaction,
-      ));
-
-    } else if (request is ClearCacheRequest) {
-      _backend.clearCache();
-      _sendRequestConclusion(request);
-
-    } else if (request is FlushStateRequest) {
-      _backend.flushState();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseRequest) {
-      _backend.close();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseAndOpenRequest) {
-      _backend.closeAndOpen(request.path);
-      _sendRequestConclusion(request);
-    }
-  }
-
-  void _sendRequestConclusion(ControlRequest req) {
-    sendMessage(RequestConclusion(req.id));
-  }
-}
-
-
-

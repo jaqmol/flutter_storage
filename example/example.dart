@@ -10,9 +10,9 @@ import 'dart:math';
 void main() {
   var rand = Random.secure();
 
-  test('Illustrate basic usage of flutter_storage', () async {
+  test('Illustrate basic usage of flutter_storage', () {
     // The database is backed by one file:
-    var storage = await Storage.open('my-apps-database.scl');
+    var storage = Storage('my-apps-database.scl');
 
     // Generate the houses in the street
     var houses = List<House>.generate(
@@ -24,16 +24,16 @@ void main() {
     var street = Street('Cento Case Lane', houses);
 
     // Save the street to the database
-    await storage.setValue(street.name, street);
+    storage.setValue(street.name, street);
 
     // Retrieve the saved street
-    var deserialize = await storage.value(street.name);
+    var deserialize = storage.value(street.name);
     var retrievedStreet = Street.decode(deserialize);
     print('retrievedStreet.name: ${retrievedStreet.name}');
     print('retrievedStreet.houses.length: ${retrievedStreet.houses.length}');
 
     // Iterate all the entries
-    await for (StorageDecodeEntry entry in storage.entries) {
+    for (StorageDecodeEntry entry in storage.entries) {
       // A database can contain all kinds of entries,
       // thus a type-check is necessary:
       if (entry.value.meta.type == Street.type) {
