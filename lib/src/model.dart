@@ -37,9 +37,8 @@ import 'deserializer.dart';
 /// 
 abstract class Model {
   String type;
-  int version;
+  int version = 0;
+  Model();
   Serializer encode(Serializer serialize);
-  factory Model.decode(String type, int version, Deserializer deserialize) {
-    return null;
-  }
+  Model.decode(String type, int version, Deserializer deserialize);
 }

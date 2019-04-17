@@ -1,0 +1,38 @@
+import 'model.dart';
+
+class StartUndoGroups extends Model {
+  final String type = 'start-undo-item';
+  
+  final int startIndex;
+  final int undoType;
+  final String key;
+
+  UndoRangeItem(this.undoType, this.key, this.range);
+
+  UndoRangeItem.change(this.key, this.range)
+    : undoType = typeChange;
+
+  UndoRangeItem.remove(this.key, this.range)
+    : undoType = typeRemove;
+
+  Serializer encode([Serializer serialize]) =>
+    (serialize ?? Serializer(type))
+      .integer(undoType)
+      .string(key)
+      .integer(range.start)
+      .integer(range.length);
+
+  static Serializer encodeItem(
+    Serializer s,
+    UndoRangeItem i,
+  ) => i.encode(s);
+
+  static UndoRangeItem decodeItem(Deserializer deserialize) => UndoRangeItem(
+    deserialize.integer(),
+    deserialize.string(),
+    LogRange(
+      deserialize.integer(),
+      deserialize.integer(),
+    ),
+  );
+}

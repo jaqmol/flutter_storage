@@ -4,23 +4,23 @@ import 'log_line.dart';
 import 'log_range.dart';
 import 'dart:convert';
 
-class LogLineReplay extends IterableBase<LogLine> {
+class LineReplay extends IterableBase<LogLine> {
   final String _path;
   final int _newlineByte;
 
-  LogLineReplay(this._path, this._newlineByte);
+  LineReplay(this._path, this._newlineByte);
 
-  Iterator<LogLine> get iterator => LogLineIterator(_path, _newlineByte);
+  Iterator<LogLine> get iterator => LineIterator(_path, _newlineByte);
 }
 
-class LogLineIterator implements Iterator<LogLine> {
+class LineIterator implements Iterator<LogLine> {
   final RandomAccessFile _raf;
   final _buffer = List<int>();
   final int _newlineByte;
   int _start;
   int _length;
 
-  LogLineIterator(String path, this._newlineByte)
+  LineIterator(String path, this._newlineByte)
     : _raf = File(path).openSync(mode: FileMode.read)
   {
     _length = _raf.lengthSync();

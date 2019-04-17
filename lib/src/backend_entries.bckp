@@ -1,6 +1,6 @@
 import 'serialization.dart';
 import 'package:meta/meta.dart';
-import 'log_file.dart';
+import 'commit_file.dart';
 import 'dart:collection';
 import 'frontend_entries.dart';
 import 'log_range.dart';
@@ -9,7 +9,7 @@ typedef bool HasValueForKeyFn(String key);
 typedef String GetValueForKeyFn(String key);
 
 class StorageIterable extends IterableBase<StorageDecodeEntry> {
-  final LogFile _log;
+  final CommitFile _log;
   final Iterator<MapEntry<String, LogRange>> _ito;
   final HasValueForKeyFn _hasCachedValue;
   final GetValueForKeyFn _getCachedValue;
@@ -22,7 +22,7 @@ class StorageIterable extends IterableBase<StorageDecodeEntry> {
 }
 
 class StorageIterator implements Iterator<StorageDecodeEntry> {
-  final LogFile _log;
+  final CommitFile _log;
   final Iterator<MapEntry<String, LogRange>> _ito;
   final HasValueForKeyFn hasCachedValue;
   final GetValueForKeyFn getCachedValue;
@@ -46,7 +46,7 @@ class StorageIterator implements Iterator<StorageDecodeEntry> {
 
 Deserializer modelDeserializerForRange(
   LogRange range,
-  LogFile log,
+  CommitFile log,
   [String key, HashMap<String, String> cache]
 ) {
   String value = log.readRange(range);

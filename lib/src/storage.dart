@@ -1,13 +1,15 @@
 import 'dart:collection';
-import 'log_file.dart';
-import 'backend_entries.dart';
-import 'frontend_entries.dart';
+import 'commit_file.dart';
+// import 'backend_entries.dart';
+// import 'frontend_entries.dart';
 // import 'serialization.dart';
-import 'log_line.dart';
-import 'log_range.dart';
-import 'log_line_serializer.dart';
+// import 'log_line.dart';
+// import 'log_range.dart';
+// import 'line_serializer.dart';
 import 'serializer.dart';
+import 'deserializer.dart';
 import 'model.dart';
+import 'index.dart';
 
 const String _closedErrorMsg = "Storage cannot be used after it's closed";
 
@@ -16,24 +18,55 @@ const String _closedErrorMsg = "Storage cannot be used after it's closed";
 /// Backing store for commit log with map-interface.
 /// 
 class Storage {
-  final HashMap<String, LogRange> _index;
-  final HashMap<String, String> _cache;
-  int _openUndoGroupsCount = 0;
-  UndoStack _undoStack;
-  UndoGroup _openUndoGroup;
-  int _changesCount = 0;
-  LogFile _log;
+  // final HashMap<String, int> _index;
+  // final HashMap<String, String> _cache;
+  // int _openUndoGroupsCount = 0;
+  // UndoStack _undoStack;
+  // UndoGroup _openUndoGroup;
+  // int _changesCount = 0;
+  CommitFile _log;
+  Index _index;
   String path;
   bool _isOpen;
   
   Storage(this.path /*, [this.fromFrontend, this.toFrontend]*/)
-    : _index = HashMap<String, LogRange>(),
-      _cache = HashMap<String, String>(),
-      _undoStack = UndoStack(),
-      _log = LogFile(path),
+    : _index = Index(),
+      // _cache = HashMap<String, String>(),
+      // _undoStack = UndoStack(),
+      _log = CommitFile(path),
       _isOpen = true {
         _initState();
       }
+
+  void _initState() {
+    var value = _log.lastLine;
+    if (value == null) return;
+    if (value.length > 0) {
+      var deserialize = Deserializer(value);
+      if (deserialize.meta.type == StorageStateEntry.type) {
+        print('Using the previous state');
+        var entry = StorageStateEntry.decode(deserialize);
+        _changesCount = entry.changesCount;
+        _index.addEntries(entry.indexEntries);
+      } else _rebuildState();
+    } else _rebuildState();
+  }
+
+  void _rebuildState() {
+    for (LogLine ll in _log.replay) {
+      var deserialize = Deserializer(ll.data);
+      if (deserialize.meta.type == ChangeValueEntry.type) {
+        var entry = ChangeValueEntry.decode(deserialize);
+        _index[entry.key] = ll.range;
+      } else if (deserialize.meta.type == RemoveValueEntry.type) {
+        var entry = RemoveValueEntry.decode(deserialize);
+        _index.remove(entry.key);
+      } else if (deserialize.meta.type == ChangesCountEntry.type) {
+        var entry = ChangesCountEntry.decode(deserialize);
+        _changesCount = entry.changesCount;
+      }
+    }
+  }
 
   /// Sets the given model for the given key.
   /// 
@@ -45,8 +78,8 @@ class Storage {
   // void operator[]= (String key, Model model) {
   void setModel(String key, Model model) {
     assert(_isOpen, _closedErrorMsg);
-    var lls = _log.lineSerializer(key);
-    lls = lls.model(model);
+    var lls = _log.modelSerializer(key, model);
+    lls = model.encode(lls);
     var subsequentRange = lls.conclude();
     var previousRange = _index[key];
     if (previousRange != null) {
@@ -61,16 +94,9 @@ class Storage {
     // _cache[key] = encodedModel; // TODO: fill cache on read, keep cache at 100 entries
   }
 
-  /// Adding a collection of key-value-pairs.
-  /// 
-  /// The key-value-pairs need to be provided as iterable
-  /// of [StorageEncodeEntry]s.
-  /// 
-  void addEntries(Iterable<StorageEncodeEntry> entries) {
-    for (StorageEncodeEntry entry in entries) {
-      // this[entry.key] = entry.value;
-      setValue(entry.key, entry.value);
-    }
+  Serializer setValue(String key) {
+    assert(_isOpen, _closedErrorMsg);
+    return _log.changeValueSerializer(key);
   }
 
   /// Get a value deserializer for the given key.
@@ -294,36 +320,6 @@ class Storage {
     return staleRatio >= 0.5;
   }
 
-  void _initState() {
-    var value = _log.lastLine;
-    if (value == null) return;
-    if (value.length > 0) {
-      var deserialize = Deserializer(value);
-      if (deserialize.meta.type == StorageStateEntry.type) {
-        print('Using the previous state');
-        var entry = StorageStateEntry.decode(deserialize);
-        _changesCount = entry.changesCount;
-        _index.addEntries(entry.indexEntries);
-      } else _rebuildState();
-    } else _rebuildState();
-  }
-
-  void _rebuildState() {
-    for (LogLine ll in _log.replay) {
-      var deserialize = Deserializer(ll.data);
-      if (deserialize.meta.type == ChangeValueEntry.type) {
-        var entry = ChangeValueEntry.decode(deserialize);
-        _index[entry.key] = ll.range;
-      } else if (deserialize.meta.type == RemoveValueEntry.type) {
-        var entry = RemoveValueEntry.decode(deserialize);
-        _index.remove(entry.key);
-      } else if (deserialize.meta.type == ChangesCountEntry.type) {
-        var entry = ChangesCountEntry.decode(deserialize);
-        _changesCount = entry.changesCount;
-      }
-    }
-  }
-
   /// Clears the in-memory-cache of storage
   /// 
   /// Removes all cached values. Does not affect indexes
@@ -398,7 +394,7 @@ class Storage {
     _openUndoGroupsCount = 0;
     _undoStack = UndoStack();
     _openUndoGroup = null;
-    _log = LogFile(path);
+    _log = CommitFile(path);
     _initState();
   }
 }

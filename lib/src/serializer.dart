@@ -1,11 +1,6 @@
 import 'model.dart';
 
 abstract class Serializer {
-  // /// Serialize raw strings without subsequent base64-encoding.
-  // /// The payload must not contain newline characters.
-  // /// 
-  // Serializer raw(String component);
-
   /// Serialize a [Model] instance using it's [encode(…)] method.
   /// Handy to chain serializer calls.
   /// 
@@ -31,15 +26,27 @@ abstract class Serializer {
   /// 
   Serializer float(double component);
 
-  /// Serialize a collection value.
+  /// Serialize a list value.
   /// 
-  /// Provide the collection of payloads to be encoded,
+  /// Provide the list of items to be encoded,
   /// plus an [encodeFn]. The [encodeFn] will be called
-  /// with this serializer instance and each element 
-  /// of the collection.
+  /// with this serializer instance and each item 
+  /// of the list.
   /// 
-  Serializer collection<T>(
+  Serializer list<T>(
     Iterable<T> components,
-    void encodeFn(Serializer s, T item),
+    void encodeFn(T item),
+  );
+
+  /// Serialize a map value.
+  /// 
+  /// Provide the map of entries to be encoded,
+  /// plus an [encodeFn]. The [encodeFn] will be called
+  /// with this serializer instance and each key and value
+  /// of the map.
+  /// 
+  Serializer map<K, V>(
+    Map<K, V> components,
+    void encodeFn(K k, V v),
   );
 }
