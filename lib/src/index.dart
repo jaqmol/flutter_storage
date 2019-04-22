@@ -28,7 +28,25 @@ class Index extends Model {
   int get changesCount => _changes.length - _data.length;
 
   void undo() {
-    // TODO
+    var changeEntry = _changes.last;
+    if (changeEntry == null) return;
+    var lastChangeEntry = _changes.lastWhere((var entry) => 
+      entry != changeEntry && 
+      entry.key == changeEntry.key
+    );
+    if (lastChangeEntry != null) {
+      var change = lastChangeEntry.value;
+      if (change is _ChangeEntry) {
+        _data[lastChangeEntry.key] = change.startIndex;
+        _changes.removeLast();
+      } else if (change is _RemoveEntry) {
+        _data.remove(lastChangeEntry.key);
+        _changes.removeLast();
+      }
+    } else {
+      _data.remove(changeEntry.key);
+      _changes.removeLast();
+    }
   }
 
   void operator[]= (String key, int startIndex) {
@@ -37,11 +55,11 @@ class Index extends Model {
   }
 
   int remove(String key) {
-    var si = _data.remove(key);
-    if (si != null) {
-      _changes.add(MapEntry(key, _RemoveEntry()));
+    var lastStartIndex = _data.remove(key);
+    if (lastStartIndex != null) {
+      _changes.add(MapEntry(key, _RemoveEntry(lastStartIndex)));
     }
-    return si;
+    return lastStartIndex;
   }
   
   Serializer encode(Serializer serialize) =>
@@ -51,20 +69,19 @@ class Index extends Model {
         serialize.string(me.key);
         var v = me.value;
         serialize.integer(v.type.index);
-        if (v is _ChangeEntry) {
-          serialize.integer(v.startIndex);
-        }
+        serialize.integer(v.startIndex);
       }
     );
 
   Index.decode(String type, int version, Deserializer deserialize)
     : _changes = deserialize.list<MapEntry<String, _Entry>>(
         () {
-          var k = deserialize.string();
-          var t = _Type.values[deserialize.integer()];
-          return MapEntry<String, _Entry>(k, t == _Type.Change
-              ? _ChangeEntry(deserialize.integer())
-              : _RemoveEntry()
+          var key = deserialize.string();
+          var type = _Type.values[deserialize.integer()];
+          var index = deserialize.integer();
+          return MapEntry<String, _Entry>(key, type == _Type.Change
+              ? _ChangeEntry(index)
+              : _RemoveEntry(index)
           );
         },
       ),
@@ -79,20 +96,24 @@ class Index extends Model {
 }
 
 class _Entry {
-  _Type type;
+  int _startIndex;
+  _Type _type;
+
+  int get startIndex => _startIndex;
+  _Type get type => _type;
 }
 
 class _ChangeEntry extends _Entry {
-  final int startIndex;
-
-  _ChangeEntry(this.startIndex) {
-    type = _Type.Change;
+  _ChangeEntry(int startIndex) {
+    _startIndex = startIndex;
+    _type = _Type.Change;
   }
 }
 
 class _RemoveEntry extends _Entry {
-  _RemoveEntry() {
-    type = _Type.Remove;
+  _RemoveEntry(int startIndex) {
+    _startIndex = startIndex;
+    _type = _Type.Remove;
   }
 }
 

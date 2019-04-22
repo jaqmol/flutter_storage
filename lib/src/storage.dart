@@ -113,74 +113,9 @@ class Storage {
 
   // Undo
 
+  /// Undo last change.
+  /// 
   void undo() => _index.undo();
-
-  // /// Open an undo group to start grouping changes for undo.
-  // /// 
-  // /// Close the undo group with [closeUndoGroup].
-  // /// Call [undo] to revert the storage state.
-  // /// 
-  // /// For each call to [openUndoGroup] there must be a
-  // /// balancing call to [closeUndoGroup].
-  // /// The current undo group will be concluded only after
-  // /// the last balancing call to [closeUndoGroup].
-  // /// 
-  // void openUndoGroup() {
-  //   bool noGroupOpen = _openUndoGroup == null && _openUndoGroupsCount == 0;
-  //   bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
-  //   assert(noGroupOpen || groupsOpen, "Undo groups must be balanced");
-  //   if (noGroupOpen) {
-  //     _openUndoGroup = UndoGroup();
-  //     _openUndoGroupsCount = 1;
-  //     _undoStack.push(_openUndoGroup);
-  //   } else if (groupsOpen) {
-  //     _openUndoGroupsCount++;
-  //   }
-  // }
-
-  // /// Close an undo group to conclude an undoable collection of changes.
-  // /// 
-  // /// Open an undo group with [openUndoGroup].
-  // /// Call [undo] to revert the storage state.
-  // /// 
-  // /// For each call to [openUndoGroup] there must be a
-  // /// balancing call to [closeUndoGroup].
-  // /// The current undo group will be concluded only after
-  // /// the last balancing call to [closeUndoGroup].
-  // /// 
-  // void closeUndoGroup() {
-  //   bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
-  //   assert(groupsOpen, "Undo groups must be balanced");
-  //   _openUndoGroupsCount--;
-  //   bool lastGroupClosed = _openUndoGroupsCount == 0 && _openUndoGroup != null;
-  //   if (lastGroupClosed) {
-  //     _openUndoGroup = null;
-  //   }
-  // }
-
-  // /// Undo all changes made in an undo group;
-  // /// 
-  // /// Returns a [List<UndoAction>]s containing
-  // /// all [UndoAction]s for the user to 
-  // /// further process undo actions.
-  // /// 
-  // List<UndoAction> undo() {
-  //   var group = _undoStack.pop();
-  //   var actions = List<UndoAction>();
-  //   for (UndoRangeItem item in group) {
-  //     // Change and Remove have the same effect on index and cache
-  //     _index[item.key] = item.range;
-  //     _cache.remove(item.key);
-  //     actions.add(UndoAction(
-  //       item.undoType,
-  //       item.key,
-  //       value(item.key),
-  //     ));
-  //   }
-  //   return actions;
-  // }
-
-
 
   // Iteration
 
