@@ -1,12 +1,12 @@
 import 'dart:io';
 
-class BitwiseReverseLineReader {
+class ReverseByteReader {
   final RandomAccessFile _raf;
   final int _bufferSize;
   final List<int> _buffer;
   int _bufferIndex;
 
-  BitwiseReverseLineReader(RandomAccessFile raf, int bufferSize)
+  ReverseByteReader(RandomAccessFile raf, int bufferSize)
     : assert(raf != null),
       assert(bufferSize != null),
       _raf = raf,

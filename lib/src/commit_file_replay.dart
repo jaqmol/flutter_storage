@@ -1,11 +1,7 @@
 import 'dart:io';
 import 'dart:collection';
-// import 'log_line.dart';
-// import 'log_range.dart';
 import 'line_deserializer.dart';
-import 'bitwise_line_reader_comp_buffer.dart';
-import 'bitwise_line_reader.dart';
-import 'dart:convert';
+import 'raf_component_reader.dart';
 
 class CommitFileReplay extends IterableBase<LineDeserializer> {
   RandomAccessFile _raf;
@@ -31,17 +27,16 @@ class CommitFileIterator implements Iterator<LineDeserializer> {
 
   bool moveNext() {
     if (_raf.positionSync() < _length) return true;
-    // conclude:
     _active = false;
     _raf.setPositionSync(_appendPosition);
+    return false;
   }
 
   LineDeserializer get current {
     if (_active) {
-      return LineDeserializer(BitwiseLineReaderCompBuffer(
-        BitwiseLineReader(_raf, 16),
-        _raf.positionSync(),
-      ));
+      return LineDeserializer(
+        RafComponentReader(_raf, _raf.positionSync())
+      );
     }
     return null;
   }

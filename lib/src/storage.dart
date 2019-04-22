@@ -10,6 +10,9 @@ import 'serializer.dart';
 import 'deserializer.dart';
 import 'model.dart';
 import 'index.dart';
+import 'line_deserializer.dart';
+import 'line_serializer.dart';
+import 'entry_info.dart';
 
 const String _closedErrorMsg = "Storage cannot be used after it's closed";
 
@@ -18,210 +21,168 @@ const String _closedErrorMsg = "Storage cannot be used after it's closed";
 /// Backing store for commit log with map-interface.
 /// 
 class Storage {
-  // final HashMap<String, int> _index;
-  // final HashMap<String, String> _cache;
-  // int _openUndoGroupsCount = 0;
-  // UndoStack _undoStack;
-  // UndoGroup _openUndoGroup;
-  // int _changesCount = 0;
   CommitFile _log;
   Index _index;
   String path;
   bool _isOpen;
+  LineSerializer _openSerializer;
   
-  Storage(this.path /*, [this.fromFrontend, this.toFrontend]*/)
+  Storage(this.path)
     : _index = Index(),
-      // _cache = HashMap<String, String>(),
-      // _undoStack = UndoStack(),
       _log = CommitFile(path),
       _isOpen = true {
-        _initState();
+        _readIndex();
       }
 
-  void _initState() {
-    var value = _log.lastLine;
-    if (value == null) return;
-    if (value.length > 0) {
-      var deserialize = Deserializer(value);
-      if (deserialize.meta.type == StorageStateEntry.type) {
-        print('Using the previous state');
-        var entry = StorageStateEntry.decode(deserialize);
-        _changesCount = entry.changesCount;
-        _index.addEntries(entry.indexEntries);
-      } else _rebuildState();
-    } else _rebuildState();
+  void _readIndex() {
+    var multiDeserializer = _log.lastIndexToEnd;
+    if (multiDeserializer != null) {
+      LineDeserializer deserialize = multiDeserializer.nextLine;
+      while (deserialize != null) {
+        var info = deserialize.entryInfo;
+        if (info is IndexInfo) {
+          _index = Index.decode(null, info.modelVersion, deserialize);
+        } else {
+          if (_index == null) {
+            _index = Index();
+          }
+          _index[info.key] = deserialize.startIndex;
+        }
+        deserialize = multiDeserializer.nextLine;
+      }
+    } else {
+      _index = Index();
+    }
   }
 
-  void _rebuildState() {
-    for (LogLine ll in _log.replay) {
-      var deserialize = Deserializer(ll.data);
-      if (deserialize.meta.type == ChangeValueEntry.type) {
-        var entry = ChangeValueEntry.decode(deserialize);
-        _index[entry.key] = ll.range;
-      } else if (deserialize.meta.type == RemoveValueEntry.type) {
-        var entry = RemoveValueEntry.decode(deserialize);
-        _index.remove(entry.key);
-      } else if (deserialize.meta.type == ChangesCountEntry.type) {
-        var entry = ChangesCountEntry.decode(deserialize);
-        _changesCount = entry.changesCount;
-      }
+  void _concludeOpenSerializerIfNeeded() {
+    if (_openSerializer != null && _openSerializer.isOpen) {
+      int startIndex = _openSerializer.conclude();
+      _index[_openSerializer.entryInfo.key] = startIndex;
+      _openSerializer = null;
     }
   }
 
   /// Sets the given model for the given key.
   /// 
   /// Logs the change to the underlaying file.
-  /// Keeps the value in the cache until [clearCache] is called.
-  /// To make a batch of changes undoable, wrap them in both:
-  /// [openUndoGroup] and [closeUndoGroup].
   /// 
-  // void operator[]= (String key, Model model) {
   void setModel(String key, Model model) {
     assert(_isOpen, _closedErrorMsg);
-    var lls = _log.modelSerializer(key, model);
-    lls = model.encode(lls);
-    var subsequentRange = lls.conclude();
-    var previousRange = _index[key];
-    if (previousRange != null) {
-      // If undos are logged right away, the undo
-      // stack becomes difficult to manage.
-      if (_openUndoGroup != null) {
-        _openUndoGroup.add(UndoRangeItem.change(key, previousRange));
-      }
-      _changesCount++;
-    }
-    _index[key] = subsequentRange;
-    // _cache[key] = encodedModel; // TODO: fill cache on read, keep cache at 100 entries
+    _concludeOpenSerializerIfNeeded();
+    var serialize = _log.modelSerializer(key, model);
+    serialize = model.encode(serialize);
+    int startIndex = serialize.conclude();
+    _index[key] = startIndex;
   }
 
+  /// Sets one or several values for the given key.
+  /// 
+  /// Logs the change to the underlaying file.
+  /// 
   Serializer setValue(String key) {
     assert(_isOpen, _closedErrorMsg);
-    return _log.changeValueSerializer(key);
+    _concludeOpenSerializerIfNeeded();
+    _openSerializer = _log.valueSerializer(key);
+    return _openSerializer;
+  }
+
+  /// Get a deserializer for the given key.
+  /// 
+  /// Check the deserializer's meta field for the
+  /// type.
+  /// 
+  Deserializer entry(String key) {
+    assert(_isOpen, _closedErrorMsg);
+    int startIndex = _index[key];
+    if (startIndex == -1) return null;
+    return _log.deserializer(startIndex);
   }
 
   /// Get a value deserializer for the given key.
   /// 
   /// Check the deserializer's meta field for the
   /// type of the model for decoding.
-  /// 
-  // Deserializer operator[] (String key) {
-  Deserializer model(String key) {
+  ///
+  bool remove(String key) {
     assert(_isOpen, _closedErrorMsg);
-    Deserializer value;
-    if (_cache.containsKey(key)) {
-      value = Deserializer(_cache[key]);
-    } else {
-      LogRange range = _index[key];
-      if (range != null) {
-        value = modelDeserializerForRange(range, _log, key, _cache);
-      }
-    }
-    return value;
+    var startIndex = _index.remove(key);
+    _log.removeSerializer(key).conclude();
+    return startIndex > -1;
   }
 
-  /// Get a value deserializer for the given key.
-  /// 
-  /// Check the deserializer's meta field for the
-  /// type of the model for decoding.
-  /// 
-  Deserializer remove(String key) {
-    assert(_isOpen, _closedErrorMsg);
-    var range = _index.remove(key);
-    // If undos are logged right away, the undo
-    // stack becomes difficult to manage.
-    if (_openUndoGroup != null) {
-      _openUndoGroup.add(UndoRangeItem.remove(key, range));
-    }
-    var deserialize = modelDeserializerForRange(range, _log);
-    var removeEntry = RemoveValueEntry(key);
-    _log.appendLine(removeEntry.encode()());
-    _index.remove(key);
-    _cache.remove(key);
-    _changesCount++;
-    return deserialize;
-  }
+  // Undo
 
-  // Undo Support
+  void undo() => _index.undo();
 
-  /// Open an undo group to start grouping changes for undo.
-  /// 
-  /// Close the undo group with [closeUndoGroup].
-  /// Call [undo] to revert the storage state.
-  /// 
-  /// For each call to [openUndoGroup] there must be a
-  /// balancing call to [closeUndoGroup].
-  /// The current undo group will be concluded only after
-  /// the last balancing call to [closeUndoGroup].
-  /// 
-  void openUndoGroup() {
-    bool noGroupOpen = _openUndoGroup == null && _openUndoGroupsCount == 0;
-    bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
-    assert(noGroupOpen || groupsOpen, "Undo groups must be balanced");
-    if (noGroupOpen) {
-      _openUndoGroup = UndoGroup();
-      _openUndoGroupsCount = 1;
-      _undoStack.push(_openUndoGroup);
-    } else if (groupsOpen) {
-      _openUndoGroupsCount++;
-    }
-  }
+  // /// Open an undo group to start grouping changes for undo.
+  // /// 
+  // /// Close the undo group with [closeUndoGroup].
+  // /// Call [undo] to revert the storage state.
+  // /// 
+  // /// For each call to [openUndoGroup] there must be a
+  // /// balancing call to [closeUndoGroup].
+  // /// The current undo group will be concluded only after
+  // /// the last balancing call to [closeUndoGroup].
+  // /// 
+  // void openUndoGroup() {
+  //   bool noGroupOpen = _openUndoGroup == null && _openUndoGroupsCount == 0;
+  //   bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
+  //   assert(noGroupOpen || groupsOpen, "Undo groups must be balanced");
+  //   if (noGroupOpen) {
+  //     _openUndoGroup = UndoGroup();
+  //     _openUndoGroupsCount = 1;
+  //     _undoStack.push(_openUndoGroup);
+  //   } else if (groupsOpen) {
+  //     _openUndoGroupsCount++;
+  //   }
+  // }
 
-  /// Close an undo group to conclude an undoable collection of changes.
-  /// 
-  /// Open an undo group with [openUndoGroup].
-  /// Call [undo] to revert the storage state.
-  /// 
-  /// For each call to [openUndoGroup] there must be a
-  /// balancing call to [closeUndoGroup].
-  /// The current undo group will be concluded only after
-  /// the last balancing call to [closeUndoGroup].
-  /// 
-  void closeUndoGroup() {
-    bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
-    assert(groupsOpen, "Undo groups must be balanced");
-    _openUndoGroupsCount--;
-    bool lastGroupClosed = _openUndoGroupsCount == 0 && _openUndoGroup != null;
-    if (lastGroupClosed) {
-      _openUndoGroup = null;
-    }
-  }
+  // /// Close an undo group to conclude an undoable collection of changes.
+  // /// 
+  // /// Open an undo group with [openUndoGroup].
+  // /// Call [undo] to revert the storage state.
+  // /// 
+  // /// For each call to [openUndoGroup] there must be a
+  // /// balancing call to [closeUndoGroup].
+  // /// The current undo group will be concluded only after
+  // /// the last balancing call to [closeUndoGroup].
+  // /// 
+  // void closeUndoGroup() {
+  //   bool groupsOpen = _openUndoGroup != null && _openUndoGroupsCount > 0;
+  //   assert(groupsOpen, "Undo groups must be balanced");
+  //   _openUndoGroupsCount--;
+  //   bool lastGroupClosed = _openUndoGroupsCount == 0 && _openUndoGroup != null;
+  //   if (lastGroupClosed) {
+  //     _openUndoGroup = null;
+  //   }
+  // }
 
-  /// Undo all changes made in an undo group;
-  /// 
-  /// Returns a [List<UndoAction>]s containing
-  /// all [UndoAction]s for the user to 
-  /// further process undo actions.
-  /// 
-  List<UndoAction> undo() {
-    var group = _undoStack.pop();
-    var actions = List<UndoAction>();
-    for (UndoRangeItem item in group) {
-      // Change and Remove have the same effect on index and cache
-      _index[item.key] = item.range;
-      _cache.remove(item.key);
-      actions.add(UndoAction(
-        item.undoType,
-        item.key,
-        value(item.key),
-      ));
-    }
-    return actions;
-  }
+  // /// Undo all changes made in an undo group;
+  // /// 
+  // /// Returns a [List<UndoAction>]s containing
+  // /// all [UndoAction]s for the user to 
+  // /// further process undo actions.
+  // /// 
+  // List<UndoAction> undo() {
+  //   var group = _undoStack.pop();
+  //   var actions = List<UndoAction>();
+  //   for (UndoRangeItem item in group) {
+  //     // Change and Remove have the same effect on index and cache
+  //     _index[item.key] = item.range;
+  //     _cache.remove(item.key);
+  //     actions.add(UndoAction(
+  //       item.undoType,
+  //       item.key,
+  //       value(item.key),
+  //     ));
+  //   }
+  //   return actions;
+  // }
 
 
 
-  // Iteration Support
-
-  /// Iterate keys and values
-  /// 
-  Iterable<StorageDecodeEntry> get entries {
-    assert(_isOpen, _closedErrorMsg);
-    return StorageIterable(
-      _log, _index.entries.iterator,
-      (String key) => _cache.containsKey(key),
-      (String key) => _cache[key],
-    );
-  }
+  // Iteration
 
   /// Iterate keys only
   /// 
@@ -234,13 +195,8 @@ class Storage {
   /// 
   Iterable<Deserializer> get values {
     assert(_isOpen, _closedErrorMsg);
-    return _index.entries.map((MapEntry<String, LogRange> entry) {
-      if (_cache.containsKey(entry.key)) {
-        return Deserializer(_cache[entry.key]);
-      } else {
-        return modelDeserializerForRange(entry.value, _log);
-      }
-    });
+    return _index.startIndexes
+      .map((int startIndex) => _log.deserializer(startIndex));
   }
 
   /// Perform compaction
@@ -258,33 +214,26 @@ class Storage {
   /// 
   void compaction() {
     assert(_isOpen, _closedErrorMsg);    
-    var acc = CompactionList();
-    var newRanges = _log.compaction(
-      map: (LogRange range, String rawVal) {
-        var deserialize = Deserializer(rawVal);
-        if (deserialize.meta.type == ChangeValueEntry.type) {
-          var entry = ChangeValueEntry.decode(deserialize);
-          acc[entry.key] = rawVal;
-        } else if (deserialize.meta.type == RemoveValueEntry.type) {
-          var entry = RemoveValueEntry.decode(deserialize);
-          acc.remove(entry.key);
+    var acc = Map<String, int>();
+    _log.compaction(
+      map: (LineDeserializer deserialize) {
+        var info = deserialize.entryInfo;
+        if (info is ModelInfo) {
+          acc[info.key] = deserialize.startIndex;
+        } else if (info is ValueInfo) {
+          acc[info.key] = deserialize.startIndex;
+        } else if (info is RemoveInfo) {
+          acc.remove(info.key);
         }
       },
       reduce: () => acc.values,
     );
-    _changesCount = 0;
+
     _index.clear();
-    _undoStack.clear();
-    _cache.clear();
-    
-    var indexEntries = List<MapEntry<String, LogRange>>.generate(
-      acc.length,
-      (int index) => MapEntry(
-        acc.keys[index],
-        newRanges[index],
-      ),
-    );
-    _index.addEntries(indexEntries);
+    for (MapEntry<String, int> entry in acc.entries) {
+      _index[entry.key] = entry.value;
+    }
+    _log.indexSerializer(_index).conclude();
   }
 
   /// Get the stale data ratio
@@ -307,7 +256,7 @@ class Storage {
   ///
   double get staleRatio {
     assert(_isOpen, _closedErrorMsg);
-    return _changesCount.toDouble() / _index.length.toDouble();
+    return _index.staleRatio;
   }
 
   /// Check if storage needs compaction
@@ -320,14 +269,14 @@ class Storage {
     return staleRatio >= 0.5;
   }
 
-  /// Clears the in-memory-cache of storage
-  /// 
-  /// Removes all cached values. Does not affect indexes
-  /// as indexes are always kept in memory.
-  /// 
-  void clearCache() {
-    _cache.clear();
-  }
+  // /// Clears the in-memory-cache of storage
+  // /// 
+  // /// Removes all cached values. Does not affect indexes
+  // /// as indexes are always kept in memory.
+  // /// 
+  // void clearCache() {
+  //   _cache.clear();
+  // }
 
   /// Flush state of storage to solid state.
   /// 
@@ -340,13 +289,8 @@ class Storage {
   /// will be performed.
   /// 
   void flushState() {
-    if (_changesCount == 0) return;
-    var entry = StorageStateEntry(
-      changesCount: _changesCount,
-      indexEntries: _index.entries.toList(),
-      undoStack: _undoStack,
-    );
-    _log.appendLine(entry.encode()());
+    if (_index.changesCount == 0) return;
+    _log.indexSerializer(_index).conclude();
     _log.flush();
   }
 
@@ -372,29 +316,20 @@ class Storage {
   /// Before opening the other path the currently open
   /// storage's state is flushed and closed.
   /// 
-  /// *Don't call [closeAndOpen] while undo groups are open.*
-  /// 
   /// After method concludes storage is reading 
   /// from and writing to new path.
   /// 
-  void closeAndOpen(String newPath) {
+  void shiftToPath(String newPath) {
     assert(_isOpen, _closedErrorMsg);
 
     // Closing operations must reflect [close]
     flushState();
-    // _log.flushAndClose();
     _log.close();
 
     // Reset internal state
     path = newPath;
-    _changesCount = 0;
     _index.clear();
-    _undoStack.clear();
-    _cache.clear();
-    _openUndoGroupsCount = 0;
-    _undoStack = UndoStack();
-    _openUndoGroup = null;
     _log = CommitFile(path);
-    _initState();
+    _readIndex();
   }
 }

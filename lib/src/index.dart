@@ -1,34 +1,47 @@
 import 'model.dart';
 import 'serializer.dart';
 import 'deserializer.dart';
-import 'dart:collection';
 
 class Index extends Model {
   String type = 'index';
-  final Map<String, _Entry> _data;
+  int version = 0;
+  final Map<String, int> _data;
   final List<MapEntry<String, _Entry>> _changes;
 
-  Index() : _data = Map<String, _Entry>(),
+  Index() : _data = Map<String, int>(),
             _changes = List<MapEntry<String, _Entry>>();
 
-  int operator[] (String key) {
-    var e = _data[key];
-    return e is _ChangeEntry ? e.startIndex : -1;
+  int operator[] (String key) => _data[key];
+
+  Iterable<String> get keys => _data.keys;
+  Iterable<int> get startIndexes => _data.values;
+
+  void clear() {
+    _data.clear();
+    _changes.clear();
+  }
+
+  double get staleRatio {
+    return _changes.length.toDouble() / _data.length.toDouble();
+  }
+
+  int get changesCount => _changes.length - _data.length;
+
+  void undo() {
+    // TODO
   }
 
   void operator[]= (String key, int startIndex) {
-    var e = _ChangeEntry(startIndex);
-    _data[key] = e;
-    _changes.add(MapEntry(key, e));
+    _data[key] = startIndex;
+    _changes.add(MapEntry(key, _ChangeEntry(startIndex)));
   }
 
   int remove(String key) {
-    var e = _data.remove(key);
-    if (e != null) {
+    var si = _data.remove(key);
+    if (si != null) {
       _changes.add(MapEntry(key, _RemoveEntry()));
-      return e is _ChangeEntry ? e.startIndex : -1;
     }
-    return -1;
+    return si;
   }
   
   Serializer encode(Serializer serialize) =>
@@ -55,8 +68,13 @@ class Index extends Model {
           );
         },
       ),
-      _data = Map<String, _Entry>() {
-        _data.addEntries(_changes);
+      _data = Map<String, int>() {
+        for (MapEntry<String, _Entry> me in _changes) {
+          _Entry e = me.value;
+          if (e is _ChangeEntry) {
+            _data[me.key] = e.startIndex;
+          }
+        }
       }
 }
 

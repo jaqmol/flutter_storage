@@ -6,9 +6,13 @@ import 'package:meta/meta.dart';
 import 'entry_info.dart';
 import 'index.dart';
 
+String _notOpenErrorMsg = "Attempted write operation on concluded Serializer!";
+
 class LineSerializer implements Serializer {
   final RandomAccessFile _raf;
   final _startIndex;
+  final EntryInfo entryInfo;
+  bool _isOpen;
 
   LineSerializer.index({
     @required RandomAccessFile raf,
@@ -17,8 +21,10 @@ class LineSerializer implements Serializer {
     : assert(raf != null),
       assert(index != null),
       _raf = raf,
-      _startIndex = raf.positionSync() {
-        _raf.writeStringSync(IndexInfo().toString());
+      _startIndex = raf.positionSync(),
+      entryInfo = IndexInfo(index.version),
+      _isOpen = true {
+        _raf.writeStringSync(entryInfo.toString());
         index.encode(this);
       }
 
@@ -31,8 +37,14 @@ class LineSerializer implements Serializer {
       assert(key != null),
       assert(model != null),
       _raf = raf,
-      _startIndex = raf.positionSync() {
-        this.model(model, key);
+      _startIndex = raf.positionSync(),
+      entryInfo = ModelInfo(
+        modelType: model.type,
+        modelVersion: model.version,
+        key: key,
+      ),
+      _isOpen = true {
+        _raf.writeStringSync(entryInfo.toString());
       }
 
   LineSerializer.value({
@@ -42,8 +54,10 @@ class LineSerializer implements Serializer {
     : assert(raf != null),
       assert(key != null),
       _raf = raf,
-      _startIndex = raf.positionSync() {
-        _raf.writeStringSync(ValueInfo(key).toString());
+      _startIndex = raf.positionSync(),
+      entryInfo = ValueInfo(key),
+      _isOpen = true {
+        _raf.writeStringSync(entryInfo.toString());
       }
 
   LineSerializer.remove({
@@ -52,44 +66,51 @@ class LineSerializer implements Serializer {
   })
     : assert(raf != null),
       _raf = raf,
-      _startIndex = raf.positionSync() {
-        _raf.writeStringSync(RemoveInfo(key).toString());
+      _startIndex = raf.positionSync(),
+      entryInfo = RemoveInfo(key),
+      _isOpen = true {
+        _raf.writeStringSync(entryInfo.toString());
       }
 
-  Serializer model(Model model, [String key]) {
+  Serializer model(Model model) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(ModelInfo(
       modelType: model.type,
       modelVersion: model.version,
-      key: key,
     ).toString());
     return this;
   }
 
   Serializer string(String component) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(';');
     _raf.writeStringSync(escapeString(component));
     return this;
   }
 
   Serializer bytes(Iterable<int> component) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(';');
     _raf.writeFromSync(escapeBytes(component));
     return this;
   }
 
   Serializer boolean(bool component) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(';');
     _raf.writeStringSync(component ? 'T' : 'F');
     return this;
   }
 
   Serializer integer(int component) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(';');
     _raf.writeStringSync(component.toRadixString(16));
     return this;
   }
 
   Serializer float(double component) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(';');
     _raf.writeStringSync(radixEncodeFloat(component));
     return this;
@@ -99,6 +120,7 @@ class LineSerializer implements Serializer {
     Iterable<T> components,
     void encodeFn(T item),
   ) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     integer(components.length);
     _raf.writeStringSync(';');
     for (T c in components) {
@@ -111,6 +133,7 @@ class LineSerializer implements Serializer {
     Map<K, V> components,
     void encodeFn(K k, V v),
   ) {
+    assert(_isOpen = true, _notOpenErrorMsg);
     integer(components.length);
     _raf.writeStringSync(';');
     for (MapEntry<K, V> c in components.entries) {
@@ -120,7 +143,12 @@ class LineSerializer implements Serializer {
   }
 
   int conclude() {
-    _raf.writeStringSync('\n');
+    if (_isOpen) {
+      _raf.writeStringSync('\n');
+      _isOpen = false;
+    }
     return _startIndex;
   }
+
+  bool get isOpen => _isOpen;
 }

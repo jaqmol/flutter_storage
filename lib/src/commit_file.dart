@@ -1,22 +1,16 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:meta/meta.dart';
 import 'identifier.dart';
 import 'package:path/path.dart' as p;
-import 'dart:collection';
-// import 'log_range.dart';
-// import 'log_line.dart';
 import 'commit_file_replay.dart';
 import 'line_serializer.dart';
 import 'line_deserializer.dart';
 import 'control_chars.dart';
 import 'model.dart';
 import 'index.dart';
-import 'bitwise_reverse_line_reader.dart';
-import 'deserializer.dart';
+import 'reverse_byte_reader.dart';
 import 'byte_array_multiline_deserializer.dart';
-import 'bitwise_line_reader_comp_buffer.dart';
-import 'bitwise_line_reader.dart';
+import 'raf_component_reader.dart';
 
 class CommitFile {
   static final _backupSuffix = 'backup';
@@ -32,7 +26,7 @@ class CommitFile {
     _raf = File(path).openSync(mode: FileMode.append);
   }
 
-  LineSerializer indexSerializer(String key, Index index) => LineSerializer.index(
+  LineSerializer indexSerializer(Index index) => LineSerializer.index(
     raf: _raf, index: index,
   );
   LineSerializer valueSerializer(String key) => LineSerializer.value(
@@ -46,24 +40,15 @@ class CommitFile {
   );
 
   LineDeserializer deserializer(int startIndex) => LineDeserializer(
-    BitwiseLineReaderCompBuffer(
-      BitwiseLineReader(_raf, 16),
-      startIndex,
-    ),
+    RafComponentReader(_raf, startIndex),
   );
-
-  // ReaderEndType writeLine(LineDeserializer d) {
-  //   _raf.writeFromSync(d.readAllBytes());
-  //   _raf.writeStringSync('\n');
-  //   return d.conclude();
-  // }
 
   ByteArrayMultilineDeserializer get lastIndexToEnd {
     int len = _raf.lengthSync();
     if (len == 0) return null;
-    int appendPosition = _raf.positionSync();
+    int initialIndex = _raf.positionSync();
     _raf.setPosition(len);
-    var r = BitwiseReverseLineReader(_raf, 16);
+    var r = ReverseByteReader(_raf, 16);
     var acc = List<int>();
     int b = r.nextByte;
     while (true) {
@@ -80,45 +65,9 @@ class CommitFile {
         b = r.nextByte;
       }
     }
-    _raf.setPositionSync(appendPosition);
+    _raf.setPositionSync(initialIndex);
     return ByteArrayMultilineDeserializer(acc);
   }
-
-  // LineDeserializer get lastLine {
-  //   if (_raf.lengthSync() == 0) {
-  //     return null;
-  //   }
-  //   int appendPosition = _raf.positionSync();
-  //   var buffer = _lastLineContainingBuffer();
-  //   var value = _lastLineValueFromBuffer(buffer);
-  //   _raf.setPositionSync(appendPosition);
-  //   return utf8.decode(value);
-  // }
-  // List<int> _lastLineContainingBuffer() {
-  //   var buffer = List<int>();
-  //   var chunksIterator = _BackwardsRangeIterable(_raf.lengthSync());
-  //   int foundNewlinesCount = 0;
-  //   for (_Range chunkRange in chunksIterator) {
-  //     _raf.setPositionSync(chunkRange.start);
-  //     var chunk = _raf.readSync(chunkRange.length);
-  //     buffer.insertAll(0, chunk);
-  //     for (int char in chunk) {
-  //       if (char == ControlChars.newlineByte) {
-  //         foundNewlinesCount += 1;
-  //         if (foundNewlinesCount == 2) break;
-  //       }
-  //     }
-  //     if (foundNewlinesCount == 2) break;
-  //   }
-  //   return buffer;
-  // }
-  // List<int> _lastLineValueFromBuffer(List<int> buffer) {
-  //   int end = buffer.lastIndexOf(ControlChars.newlineByte);
-  //   int start = buffer.lastIndexOf(ControlChars.newlineByte, end - 2);
-  //   if (start == -1) { start = 0; } // If only 1 line in file
-  //   else { start++; } // Start points to newline
-  //   return buffer.sublist(start, end);
-  // }
 
   int get length => _raf.lengthSync();
 
@@ -130,21 +79,23 @@ class CommitFile {
   void flush() => _raf.flushSync();
   void close() => _raf.closeSync();
 
-  CommitFileReplay get replay {
-    flush();
-    return CommitFileReplay(_raf);
-  }
+  CommitFileReplay get replay => CommitFileReplay(_raf);
 
-  compaction({
-    @required void map(int startIndex, LineDeserializer deserializer),
+  void compaction({
+    @required void map(LineDeserializer deserializer),
     @required Iterable<int> reduce(),
   }) {
-    for (LineDeserializer d in replay) {
-      map(d.startIndex, d);
+    for (LineDeserializer deserialize in replay) {
+      map(deserialize);
     }
+
     var compactionFile = CommitFile(_randomCompactionPath);
+    const int bufferSize = 16;
     for (int startIndex in reduce()) {
-      compactionFile.writeLine(deserializer(startIndex));
+      var ito = RafComponentReader(_raf, startIndex).chunks(bufferSize);
+      for (List<int> chunk in ito) {
+        _raf.writeFromSync(chunk);
+      }
     }
     
     compactionFile.flushAndClose();
@@ -169,41 +120,3 @@ String _suffixedFilenamePath(String originalFilePath, String nameSuffix) {
   String base = p.dirname(originalFilePath);
   return p.join(base, '$name-$nameSuffix.$ext');
 }
-
-// class _BackwardsRangeIterable extends IterableBase<_Range> {
-//   final int _length;
-
-//   _BackwardsRangeIterable(this._length);
-
-//   Iterator<_Range> get iterator => _BackwardsRangeIterator(_length);
-// }
-
-// class _BackwardsRangeIterator implements Iterator<_Range> {
-//   final int _length;
-//   _Range _current;
-
-//   _BackwardsRangeIterator(this._length)
-//     : _current = _Range(_length, 0);
-
-//   bool moveNext() {
-//     if (_current.start == 0) {
-//       return false;
-//     } else if (_current.start <= 64) {
-//       _current = _Range(0, _current.start);
-//     } else {
-//       _current = _Range(_current.start - 64, 64);
-//     }
-//     return true;
-//   }
-
-//   _Range get current => _current;
-// }
-
-// class _Range {
-//   final int start;
-//   final int length;
-
-//   _Range(this.start, this.length);
-
-//   String toString() => '_Range($start, $length)';
-// }

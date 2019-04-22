@@ -1,4 +1,4 @@
-import 'byte_array_comp_buffer.dart';
+import 'byte_array_component_reader.dart';
 import 'line_deserializer.dart';
 
 class ByteArrayMultilineDeserializer {
@@ -11,7 +11,7 @@ class ByteArrayMultilineDeserializer {
 
   LineDeserializer get nextLine {
     if (_currentIndex == _bytes.length) return null;
-    return LineDeserializer(ByteArrayCompBuffer(
+    return LineDeserializer(ByteArrayComponentReader(
       _bytes, _currentIndex, (int newlineIndex) {
         _currentIndex = newlineIndex + 1;
       }

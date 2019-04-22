@@ -1,59 +1,58 @@
 import 'deserializer.dart';
-import 'dart:io';
-// import 'log_range.dart';
-import 'control_chars.dart';
 import 'unescaping.dart';
 import 'dart:convert';
 import 'entry_info.dart';
-// import 'bitwise_line_reader.dart';
-import 'comp_buffer.dart';
+import 'component_reader.dart';
 
 class LineDeserializer implements Deserializer {
-  CompBuffer _compBuffer;
+  ComponentReader _reader;
   EntryInfo _entryInfo;
+  Iterator<List<int>> _iterator;
 
-  LineDeserializer(CompBuffer compBuffer)
-    : assert(compBuffer != null) {
+  LineDeserializer(ComponentReader reader)
+    : assert(reader != null),
+      _reader = reader {
+      _iterator = reader.iterator;
       _readEntryInfo();
     }
 
-  List<int> readAllBytes() => _compBuffer.readAllBytes();
+  Iterable<List<int>> chunks(int bufferSize) => _reader.chunks(bufferSize);
 
   _readEntryInfo() {
     if (_entryInfo != null) return;
-    _compBuffer.fill();
-    var infoString = utf8.decode(_compBuffer.bytes);
+    _iterator.moveNext();
+    var infoString = utf8.decode(_iterator.current);
     _entryInfo = EntryInfo.fromString(infoString);
   }
 
   EntryInfo get entryInfo => _entryInfo;
 
   String string() {
-    _compBuffer.fill();
-    var escaped = utf8.decode(_compBuffer.bytes);
+    _iterator.moveNext();
+    var escaped = utf8.decode(_iterator.current);
     return unescapeString(escaped);
   }
 
   List<int> bytes() {
-    _compBuffer.fill();
-    return unescapeBytes(_compBuffer.bytes);
+    _iterator.moveNext();
+    return unescapeBytes(_iterator.current);
   }
 
   bool boolean() {
-    _compBuffer.fill();
-    var v = utf8.decode(_compBuffer.bytes);
+    _iterator.moveNext();
+    var v = utf8.decode(_iterator.current);
     return v == 'T';
   }
 
   int integer() {
-    _compBuffer.fill();
-    var v = utf8.decode(_compBuffer.bytes);
+    _iterator.moveNext();
+    var v = utf8.decode(_iterator.current);
     return int.parse(v, radix: 16);
   }
 
   double float() {
-    _compBuffer.fill();
-    var v = utf8.decode(_compBuffer.bytes);
+    _iterator.moveNext();
+    var v = utf8.decode(_iterator.current);
     return radixDecodeFloat(v);
   }
 
@@ -73,5 +72,5 @@ class LineDeserializer implements Deserializer {
     );
   }
 
-  int conclude() => _compBuffer.fixReadPosition();
+  int get startIndex => _reader.startIndex;
 }

@@ -107,18 +107,21 @@ class RemoveInfo extends EntryInfo {
 }
 
 class IndexInfo extends EntryInfo {
-  IndexInfo() {
+  final int modelVersion;
+
+  IndexInfo(this.modelVersion) {
     this.entryType = ControlChars.indexPrefixChar;
     this.key = 'NDEX';
   }
 
   static bool _canParse(List<String> comps) {
-    if (comps.length != 2) return false;
+    if (comps.length != 3) return false;
     var entryType = comps[0];
     return entryType == ControlChars.indexPrefixChar;
   }
 
-  factory IndexInfo._fromComps(List<String> comps) => IndexInfo();
+  factory IndexInfo._fromComps(List<String> comps) => 
+    IndexInfo(int.parse(comps[1]));
 
-  String toString() => '$entryType:$key}';
+  String toString() => '$entryType:$modelVersion:$key}';
 }
