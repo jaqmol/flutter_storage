@@ -6,16 +6,16 @@ String escapeString(String unescaped) => unescaped
   .replaceAll(ControlChars.semicolonChar, ControlChars.semicolonReplacementChars)
   .replaceAll(ControlChars.colonChar, ControlChars.colonReplacementChars);
 
-List<int> escapeBytes(List<int> unescaped) {
+List<int> escapeBytes(Iterable<int> unescaped) {
   var acc = List<int>();
   for (int b in unescaped) {
     if (b == ControlChars.newlineByte) {
       acc.addAll(ControlChars.newlineReplacementBytes);
-    } else if (unescaped.contains(ControlChars.returnByte)) {
+    } else if (b == ControlChars.returnByte) {
       acc.addAll(ControlChars.returnReplacementBytes);
-    } else if (unescaped.contains(ControlChars.semicolonByte)) {
+    } else if (b == ControlChars.semicolonByte) {
       acc.addAll(ControlChars.semicolonReplacementBytes);
-    } else if (unescaped.contains(ControlChars.colonByte)) {
+    } else if (b == ControlChars.colonByte) {
       acc.addAll(ControlChars.colonReplacementBytes);
     } else {
       acc.add(b);

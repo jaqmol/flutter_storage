@@ -7,52 +7,50 @@ import 'component_reader.dart';
 class LineDeserializer implements Deserializer {
   ComponentReader _reader;
   EntryInfo _entryInfo;
-  Iterator<List<int>> _iterator;
 
   LineDeserializer(ComponentReader reader)
     : assert(reader != null),
       _reader = reader {
-      _iterator = reader.iterator;
       _readEntryInfo();
     }
 
-  Iterable<List<int>> chunks(int bufferSize) => _reader.chunks(bufferSize);
+  // Iterable<List<int>> chunks(int bufferSize) => _reader.chunks(bufferSize);
 
   _readEntryInfo() {
     if (_entryInfo != null) return;
-    _iterator.moveNext();
-    var infoString = utf8.decode(_iterator.current);
+    assert(_reader.moveNext());
+    var infoString = utf8.decode(_reader.current);
     _entryInfo = EntryInfo.fromString(infoString);
   }
 
   EntryInfo get entryInfo => _entryInfo;
 
   String string() {
-    _iterator.moveNext();
-    var escaped = utf8.decode(_iterator.current);
+    _reader.moveNext();
+    var escaped = utf8.decode(_reader.current);
     return unescapeString(escaped);
   }
 
   List<int> bytes() {
-    _iterator.moveNext();
-    return unescapeBytes(_iterator.current);
+    _reader.moveNext();
+    return unescapeBytes(_reader.current);
   }
 
   bool boolean() {
-    _iterator.moveNext();
-    var v = utf8.decode(_iterator.current);
+    _reader.moveNext();
+    var v = utf8.decode(_reader.current);
     return v == 'T';
   }
 
   int integer() {
-    _iterator.moveNext();
-    var v = utf8.decode(_iterator.current);
+    _reader.moveNext();
+    var v = utf8.decode(_reader.current);
     return int.parse(v, radix: 16);
   }
 
   double float() {
-    _iterator.moveNext();
-    var v = utf8.decode(_iterator.current);
+    _reader.moveNext();
+    var v = utf8.decode(_reader.current);
     return radixDecodeFloat(v);
   }
 

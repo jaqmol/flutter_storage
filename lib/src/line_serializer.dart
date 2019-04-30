@@ -4,6 +4,7 @@ import 'model.dart';
 import 'escaping.dart';
 import 'package:meta/meta.dart';
 import 'entry_info.dart';
+import 'entry_info_private.dart';
 import 'index.dart';
 
 String _notOpenErrorMsg = "Attempted write operation on concluded Serializer!";
@@ -14,11 +15,10 @@ class LineSerializer implements Serializer {
   final EntryInfo entryInfo;
   bool _isOpen;
 
-  LineSerializer.index({
+  LineSerializer.serializeIndex({
     @required RandomAccessFile raf,
     @required Index index,
-  })
-    : assert(raf != null),
+  }): assert(raf != null),
       assert(index != null),
       _raf = raf,
       _startIndex = raf.positionSync(),
@@ -31,16 +31,17 @@ class LineSerializer implements Serializer {
   LineSerializer.model({
     @required RandomAccessFile raf,
     @required String key,
-    @required Model model,
-  })
-    : assert(raf != null),
+    @required String modelType,
+    @required int modelVersion,
+  }): assert(raf != null),
       assert(key != null),
-      assert(model != null),
+      assert(modelType != null),
+      assert(modelVersion != null),
       _raf = raf,
       _startIndex = raf.positionSync(),
       entryInfo = ModelInfo(
-        modelType: model.type,
-        modelVersion: model.version,
+        modelType: modelType,
+        modelVersion: modelVersion,
         key: key,
       ),
       _isOpen = true {
@@ -50,8 +51,7 @@ class LineSerializer implements Serializer {
   LineSerializer.value({
     @required RandomAccessFile raf,
     @required String key,
-  })
-    : assert(raf != null),
+  }): assert(raf != null),
       assert(key != null),
       _raf = raf,
       _startIndex = raf.positionSync(),
@@ -60,17 +60,19 @@ class LineSerializer implements Serializer {
         _raf.writeStringSync(entryInfo.toString());
       }
 
-  LineSerializer.remove({
-    @required RandomAccessFile raf,
-    @required String key,
-  })
-    : assert(raf != null),
-      _raf = raf,
-      _startIndex = raf.positionSync(),
-      entryInfo = RemoveInfo(key),
-      _isOpen = true {
-        _raf.writeStringSync(entryInfo.toString());
-      }
+  // // TODO: doesn't make sense as part of this file,
+  // //   because only RemoveInfo is written.
+  // LineSerializer.remove({
+  //   @required RandomAccessFile raf,
+  //   @required String key,
+  // }): assert(raf != null),
+  //     assert(key != null),
+  //     _raf = raf,
+  //     _startIndex = raf.positionSync(),
+  //     entryInfo = RemoveInfo(key),
+  //     _isOpen = true {
+  //       _raf.writeStringSync(entryInfo.toString());
+  //     }
 
   Serializer model(Model model) {
     assert(_isOpen = true, _notOpenErrorMsg);
@@ -122,7 +124,6 @@ class LineSerializer implements Serializer {
   ) {
     assert(_isOpen = true, _notOpenErrorMsg);
     integer(components.length);
-    _raf.writeStringSync(';');
     for (T c in components) {
       encodeFn(c);
     }
@@ -135,7 +136,6 @@ class LineSerializer implements Serializer {
   ) {
     assert(_isOpen = true, _notOpenErrorMsg);
     integer(components.length);
-    _raf.writeStringSync(';');
     for (MapEntry<K, V> c in components.entries) {
       encodeFn(c.key, c.value);
     }

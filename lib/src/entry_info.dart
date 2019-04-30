@@ -2,6 +2,7 @@ import 'control_chars.dart';
 import 'escaping.dart';
 import 'unescaping.dart';
 import 'package:meta/meta.dart';
+import 'entry_info_private.dart';
 
 class EntryInfo {
   String entryType;
@@ -14,14 +15,14 @@ class EntryInfo {
 
   factory EntryInfo.fromString(String infoString) {
     var comps = infoString.split(':');
-    if (ModelInfo._canParse(comps)) {
-      return ModelInfo._fromComps(comps);
-    } else if (ValueInfo._canParse(comps)) {
-      return ValueInfo._fromComps(comps);
-    } else if (RemoveInfo._canParse(comps)) {
-      return RemoveInfo._fromComps(comps);
-    } else if (IndexInfo._canParse(comps)) {
-      return IndexInfo._fromComps(comps);
+    if (ModelInfo.canParse(comps)) {
+      return ModelInfo.fromComps(comps);
+    } else if (ValueInfo.canParse(comps)) {
+      return ValueInfo.fromComps(comps);
+    } else if (RemoveInfo.canParse(comps)) {
+      return RemoveInfo.fromComps(comps);
+    } else if (IndexInfo.canParse(comps)) {
+      return IndexInfo.fromComps(comps);
     }
     return null;
   }
@@ -44,15 +45,15 @@ class ModelInfo extends EntryInfo {
     this.key = key;
   }
 
-  static bool _canParse(List<String> comps) {
-    if (comps.length != 4 || comps.length != 5) return false;
+  static bool canParse(List<String> comps) {
+    if (comps.length != 4 && comps.length != 5) return false;
     var entryType = comps[0];
     var valueType = comps[1];
     return entryType == ControlChars.changePrefixChar &&
            valueType == ControlChars.modelPrefixChar;
   }
 
-  factory ModelInfo._fromComps(List<String> comps) => ModelInfo(
+  factory ModelInfo.fromComps(List<String> comps) => ModelInfo(
     modelType: comps[2],
     modelVersion: int.parse(comps[3]),
     key: comps.length == 5 ? unescapeString(comps[4]) : null,
@@ -72,7 +73,7 @@ class ValueInfo extends EntryInfo {
     this.key = key;
   }
 
-  static bool _canParse(List<String> comps) {
+  static bool canParse(List<String> comps) {
     if (comps.length != 3) return false;
     var entryType = comps[0];
     var valueType = comps[1];
@@ -80,48 +81,9 @@ class ValueInfo extends EntryInfo {
            valueType == ControlChars.valuePrefixChar;
   }
 
-  factory ValueInfo._fromComps(List<String> comps) => 
+  factory ValueInfo.fromComps(List<String> comps) => 
     ValueInfo(unescapeString(comps[2]));
 
   String toString() =>
     '$entryType:$valueType:${escapeString(key)}';
-}
-
-class RemoveInfo extends EntryInfo {
-  RemoveInfo(String key) {
-    this.entryType = ControlChars.removePrefixChar;
-    this.key = key;
-  }
-
-  static bool _canParse(List<String> comps) {
-    if (comps.length != 2) return false;
-    var entryType = comps[0];
-    return entryType == ControlChars.removePrefixChar;
-  }
-
-  factory RemoveInfo._fromComps(List<String> comps) => 
-    RemoveInfo(unescapeString(comps[2]));
-
-  String toString() =>
-    '$entryType:${escapeString(key)}';
-}
-
-class IndexInfo extends EntryInfo {
-  final int modelVersion;
-
-  IndexInfo(this.modelVersion) {
-    this.entryType = ControlChars.indexPrefixChar;
-    this.key = 'NDEX';
-  }
-
-  static bool _canParse(List<String> comps) {
-    if (comps.length != 3) return false;
-    var entryType = comps[0];
-    return entryType == ControlChars.indexPrefixChar;
-  }
-
-  factory IndexInfo._fromComps(List<String> comps) => 
-    IndexInfo(int.parse(comps[1]));
-
-  String toString() => '$entryType:$modelVersion:$key}';
 }

@@ -1,6 +1,6 @@
-import 'package:flutter_storage/src/serialization.dart';
-import 'package:flutter_storage/src/storage.dart';
-import 'package:flutter_storage/src/frontend_entries.dart';
+// import 'package:flutter_storage/src/serialization.dart';
+import 'package:flutter_storage/flutter_storage.dart';
+// import 'package:flutter_storage/src/frontend_entries.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:math';
 
@@ -24,20 +24,21 @@ void main() {
     var street = Street('Cento Case Lane', houses);
 
     // Save the street to the database
-    storage.setValue(street.name, street);
+    storage.setModel(street.name, street);
 
     // Retrieve the saved street
-    var deserialize = storage.value(street.name);
+    var deserialize = storage.entry(street.name);
     var retrievedStreet = Street.decode(deserialize);
     print('retrievedStreet.name: ${retrievedStreet.name}');
     print('retrievedStreet.houses.length: ${retrievedStreet.houses.length}');
 
     // Iterate all the entries
-    for (StorageDecodeEntry entry in storage.entries) {
+    for (Deserializer deserialize in storage.values) {
       // A database can contain all kinds of entries,
       // thus a type-check is necessary:
-      if (entry.value.meta.type == Street.type) {
-        var streetEntry = Street.decode(entry.value);
+      var info = deserialize.entryInfo as ModelInfo;
+      if (info.modelType == Street.staticType) {
+        var streetEntry = Street.decode(deserialize);
         print('streetEntry.name: ${streetEntry.name}');
         print('streetEntry.houses.length: ${streetEntry.houses.length}');
       }
@@ -48,7 +49,9 @@ void main() {
 class Street implements Model {
   // Each model needs to have static [type] field
   // to identify it's type before decoding:
-  static final String type = 'street';
+  static final String staticType = 'street';
+  final String type = 'street';
+  final int version = 0;
   final String name;
   final List<House> houses;
 
@@ -58,42 +61,42 @@ class Street implements Model {
   // field-order must be repeated during decode.
   // In case this model is contained in another one,
   // an optional serializer should be reused:
-  Serializer encode([Serializer serialize]) =>
-    (serialize ?? Serializer(type))
+  Serializer encode(Serializer serialize) =>
+    serialize
       .string(name)
-      .collection<House>(houses, House.encodeHouse);
+      .list<House>(houses, (House h) => h.encode(serialize));
 
   // Models should decode themselves.
   // The serialization-field-order must be 
   // the same like during encode.
   Street.decode(Deserializer deserialize)
     : name = deserialize.string(),
-      houses = deserialize.collection<House>(House.decodeHouse);
+      houses = deserialize.list<House>(() => House.decode(deserialize));
 }
 
 class House implements Model {
   // Each model needs to have static [type] field
   // to identify it's type before decoding:
-  static final String type = 'house';
+  final String type = 'house';
+  final int version = 0;
   final bool singleStory;
   final int number;
 
   House(this.number, this.singleStory);
 
-  Serializer encode([Serializer serialize]) => 
-    (serialize ?? Serializer(type))
+  Serializer encode(Serializer serialize) =>
+    serialize
       .integer(number)
       .boolean(singleStory);
 
   // This model is never serialized directl,
   // so collection support is sufficient:
 
-  static Serializer encodeHouse(
-    Serializer serialize,
-    House house,
-  ) => house.encode(serialize);
+  // static Serializer encodeHouse(
+  //   House house,
+  // ) => house.encode(serialize);
 
-  static House decodeHouse(Deserializer deserialize) =>
+  static House decode(Deserializer deserialize) =>
     House(
       deserialize.integer(),
       deserialize.boolean(),

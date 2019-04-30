@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/src/log_file.dart';
+import 'package:flutter_storage/src/commit_file.dart';
+import 'package:flutter_storage/src/line_deserializer.dart';
 import 'dart:math';
 import 'dart:io';
 
@@ -11,7 +12,7 @@ void main() {
     var batch1EndIndex = 100;
     var batch2EndIndex = batch1EndIndex * 2;
     var dataPrefix = 'Writing and reading test line';
-    var file = LogFile(_TestData.filename);
+    var file = CommitFile(_TestData.filename);
 
     _writeLines(
       dataPrefix, 0, batch1EndIndex, file, 
@@ -19,7 +20,7 @@ void main() {
     );
 
     file.flushAndClose();
-    file = LogFile(_TestData.filename);
+    file = CommitFile(_TestData.filename);
 
     _writeLines(
       dataPrefix, batch1EndIndex, batch2EndIndex, file, 
@@ -34,17 +35,17 @@ void main() {
   test("Writing and replaying", () {
     var testData = _TestData();
     var dataPrefix = 'Writing and replaying test line';
-    var file = LogFile(_TestData.filename);
+    var file = CommitFile(_TestData.filename);
 
     _writeLines(dataPrefix, 0, 100, file, testData.lines, testData.ranges);
     
     int lineIndex = 0;
-    for (LogLine ll in file.replay) {
+    for (LineDeserializer des in file.replay) {
       var range = testData.ranges[lineIndex];
-      expect(range.start, equals(ll.range.start));
-      expect(range.length, equals(ll.range.length));
+      expect(range.start, equals(des.range.start));
+      expect(range.length, equals(des.range.length));
       var data = testData.lines[lineIndex];
-      expect(ll.data, equals(data));
+      expect(des.data, equals(data));
       lineIndex++;
     }
 
@@ -54,7 +55,7 @@ void main() {
   test("Random alternation of reading and writing", () {
     var testData = _TestData();
     var dataPrefix = 'Random alternation test line';
-    var file = LogFile(_TestData.filename);
+    var file = CommitFile(_TestData.filename);
 
     void performWrite() {
       _writeLine(
@@ -82,7 +83,7 @@ void main() {
   });
 
   test("Compaction", () {
-    var file = LogFile(_TestData.filename);
+    var file = CommitFile(_TestData.filename);
 
     for (int i = 0; i < 100; i++) {
       file.appendLine('remove $i');
@@ -115,7 +116,7 @@ void main() {
   });
 
   test("Reading last line", () {
-    var file = LogFile(_TestData.filename);
+    var file = CommitFile(_TestData.filename);
     
     file.appendLine('Test line 1');
     file.flush();
@@ -139,11 +140,11 @@ typedef void VoidFn();
 
 class _TestData {
   static final String filename = 'log-file-test-file.log';
-  List<LogRange> ranges;
+  List<int> startIndexes;
   List<String> lines;
 
   _TestData()
-    : ranges = List<LogRange>(),
+    : startIndexes = List<int>(),
       lines = List<String>();
 }
 
@@ -151,14 +152,14 @@ void _writeLines(
   String dataPrefix,
   int startIndex,
   int amount,
-  LogFile file,
+  CommitFile file,
   List<String> linesCollector,
-  List<LogRange> rangesCollector,
+  List<int> indexesCollector,
 ) {
   for (int i = startIndex; i < amount; i++) {
     _writeLine(
       dataPrefix, i, file,
-      linesCollector, rangesCollector,
+      linesCollector, indexesCollector,
     );
   }
 }
@@ -166,19 +167,19 @@ void _writeLines(
 void _writeLine(
   String dataPrefix,
   int index,
-  LogFile file,
+  CommitFile file,
   List<String> linesCollector,
-  List<LogRange> rangesCollector,
+  List<int> indexesCollector,
 ) {
   var data = '$dataPrefix $index';
   linesCollector.add(data);
-  var range = file.appendLine(data);
-  rangesCollector.add(range);
+  var range = file.valueSerializer(data);
+  indexesCollector.add(range);
 }
 
 void _checkWrittenLines(
   List<LogRange> writtenRanges,
-  LogFile file,
+  CommitFile file,
   List<String> exptectedLines,
 ) {
   for (int i = 0; i < writtenRanges.length; i++) {
@@ -192,7 +193,7 @@ void _checkWrittenLines(
 
 void _readAndCheckLine(
   LogRange writtenRange,
-  LogFile file,
+  CommitFile file,
   String exptectedLine,
 ) {
   var writtenData = file.readRange(writtenRange);

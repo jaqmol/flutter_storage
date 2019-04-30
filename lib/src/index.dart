@@ -5,8 +5,8 @@ import 'deserializer.dart';
 class Index extends Model {
   String type = 'index';
   int version = 0;
-  final Map<String, int> _data;
-  final List<MapEntry<String, _Entry>> _changes;
+  Map<String, int> _data;
+  List<MapEntry<String, _Entry>> _changes;
 
   Index() : _data = Map<String, int>(),
             _changes = List<MapEntry<String, _Entry>>();
@@ -16,16 +16,37 @@ class Index extends Model {
   Iterable<String> get keys => _data.keys;
   Iterable<int> get startIndexes => _data.values;
 
+  void operator[]= (String key, int startIndex) {
+    _data[key] = startIndex;
+    _changes.add(MapEntry(key, _ChangeEntry(startIndex)));
+  }
+
+  int remove(String key) {
+    var lastStartIndex = _data.remove(key);
+    if (lastStartIndex != null) {
+      _changes.add(MapEntry(key, _RemoveEntry(lastStartIndex)));
+    }
+    return lastStartIndex;
+  }
+
   void clear() {
     _data.clear();
     _changes.clear();
+  }
+
+  void replaceIndex(Map<String, int> keyStartIndexMapping) {
+    _data = keyStartIndexMapping;
+    _changes = _data.entries.map<MapEntry<String, _Entry>>((MapEntry<String, int> e) {
+      return MapEntry(e.key, _ChangeEntry(e.value));
+    }).toList();
   }
 
   double get staleRatio {
     return _changes.length.toDouble() / _data.length.toDouble();
   }
 
-  int get changesCount => _changes.length - _data.length;
+  int get length => _data.length;
+  // int get changesCount => _changesCount;
 
   void undo() {
     var changeEntry = _changes.last;
@@ -48,19 +69,6 @@ class Index extends Model {
       _changes.removeLast();
     }
   }
-
-  void operator[]= (String key, int startIndex) {
-    _data[key] = startIndex;
-    _changes.add(MapEntry(key, _ChangeEntry(startIndex)));
-  }
-
-  int remove(String key) {
-    var lastStartIndex = _data.remove(key);
-    if (lastStartIndex != null) {
-      _changes.add(MapEntry(key, _RemoveEntry(lastStartIndex)));
-    }
-    return lastStartIndex;
-  }
   
   Serializer encode(Serializer serialize) =>
     serialize.list<MapEntry<String, _Entry>>(
@@ -68,7 +76,7 @@ class Index extends Model {
       (MapEntry<String, _Entry> me) {
         serialize.string(me.key);
         var v = me.value;
-        serialize.integer(v.type.index);
+        serialize.string(v.type);
         serialize.integer(v.startIndex);
       }
     );
@@ -77,11 +85,11 @@ class Index extends Model {
     : _changes = deserialize.list<MapEntry<String, _Entry>>(
         () {
           var key = deserialize.string();
-          var type = _Type.values[deserialize.integer()];
-          var index = deserialize.integer();
-          return MapEntry<String, _Entry>(key, type == _Type.Change
-              ? _ChangeEntry(index)
-              : _RemoveEntry(index)
+          var type = deserialize.string();
+          var startIndex = deserialize.integer();
+          return MapEntry<String, _Entry>(
+            key, 
+            _Entry.create(type, startIndex),
           );
         },
       ),
@@ -95,29 +103,34 @@ class Index extends Model {
       }
 }
 
-class _Entry {
-  int _startIndex;
-  _Type _type;
+abstract class _Entry {
+  int get startIndex;
+  String get type;
 
-  int get startIndex => _startIndex;
-  _Type get type => _type;
+  static _Entry create(String type, int startIndex) =>
+    type == _Type.change
+      ? _ChangeEntry(startIndex)
+      : _RemoveEntry(startIndex);
 }
 
 class _ChangeEntry extends _Entry {
-  _ChangeEntry(int startIndex) {
-    _startIndex = startIndex;
-    _type = _Type.Change;
-  }
+  final int startIndex;
+  _ChangeEntry(this.startIndex);
+  String get type => 'C';
 }
 
 class _RemoveEntry extends _Entry {
-  _RemoveEntry(int startIndex) {
-    _startIndex = startIndex;
-    _type = _Type.Remove;
-  }
+  final int startIndex;
+  _RemoveEntry(this.startIndex);
+  String get type => 'R';
 }
 
-enum _Type {
-  Change,
-  Remove,
+class _Type {
+  static String get change => 'C';
+  static String get remove => 'R';
 }
+
+// enum _Type {
+//   Change,
+//   Remove,
+// }

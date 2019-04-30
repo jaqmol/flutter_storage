@@ -7,38 +7,16 @@ typedef NewlineIndexCallback(int newlineIndex);
 class ByteArrayComponentReader extends ComponentReader {
   final List<int> _allBytes;
   final int _startIndex;
+  int _currentIndex;
   final NewlineIndexCallback _newlineIndexCallback;
+  final List<int> _compBuffer;
+  bool _finished;
 
   ByteArrayComponentReader(
     List<int> _allBytes,
     int startIndex, 
     NewlineIndexCallback newlineIndexCallback,
   ) : _allBytes = _allBytes,
-      _startIndex = startIndex,
-      _newlineIndexCallback = newlineIndexCallback;
-
-  ByteArrayComponentReaderIterator get iterator =>
-    ByteArrayComponentReaderIterator(_allBytes, _startIndex, _newlineIndexCallback);
-
-  ByteArrayComponentReaderChunks chunks(int bufferSize) =>
-    ByteArrayComponentReaderChunks(_allBytes, bufferSize);
-
-  int get startIndex => _startIndex;
-}
-
-class ByteArrayComponentReaderIterator extends Iterator<List<int>> {
-  final List<int> _allBytes;
-  final int _startIndex;
-  int _currentIndex;
-  final NewlineIndexCallback _newlineIndexCallback;
-  final List<int> _compBuffer;
-  bool _finished;
-
-  ByteArrayComponentReaderIterator(
-    List<int> allBytes,
-    int startIndex,
-    NewlineIndexCallback newlineIndexCallback,
-  ) : _allBytes = allBytes,
       _startIndex = startIndex,
       _currentIndex = startIndex,
       _newlineIndexCallback = newlineIndexCallback,
@@ -66,10 +44,15 @@ class ByteArrayComponentReaderIterator extends Iterator<List<int>> {
       b = _allBytes[_currentIndex];
     }
 
-    return true;
+    return _compBuffer.length > 0;
   }
 
   List<int> get current => _compBuffer;
+
+  ByteArrayComponentReaderChunks chunks(int bufferSize) =>
+    ByteArrayComponentReaderChunks(_allBytes, bufferSize);
+
+  int get startIndex => _startIndex;
 }
 
 class ByteArrayComponentReaderChunks extends IterableBase<List<int>> {

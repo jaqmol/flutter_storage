@@ -5,12 +5,15 @@ import 'package:path/path.dart' as p;
 import 'commit_file_replay.dart';
 import 'line_serializer.dart';
 import 'line_deserializer.dart';
-import 'control_chars.dart';
-import 'model.dart';
+import 'remove_serializer.dart';
+// import 'control_chars.dart';
+// import 'model.dart';
 import 'index.dart';
-import 'reverse_byte_reader.dart';
-import 'byte_array_multiline_deserializer.dart';
+// import 'reverse_byte_reader.dart';
+// import 'byte_array_multiline_reader.dart';
 import 'raf_component_reader.dart';
+import 'index_tail_reader.dart';
+import 'chunk_line_reader.dart';
 
 class CommitFile {
   static final _backupSuffix = 'backup';
@@ -26,48 +29,36 @@ class CommitFile {
     _raf = File(path).openSync(mode: FileMode.append);
   }
 
-  LineSerializer indexSerializer(Index index) => LineSerializer.index(
+  int serializeIndex(Index index) => LineSerializer.serializeIndex(
     raf: _raf, index: index,
-  );
+  ).conclude();
   LineSerializer valueSerializer(String key) => LineSerializer.value(
     raf: _raf, key: key,
   );
-  LineSerializer modelSerializer(String key, Model model) => LineSerializer.model(
-    raf: _raf, key: key, model: model,
+  LineSerializer modelSerializer(String key, String modelType, int modelVersion) => LineSerializer.model(
+    raf: _raf, key: key, modelType: modelType, modelVersion: modelVersion,
   );
-  LineSerializer removeSerializer(String key) => LineSerializer.remove(
+  RemoveSerializer removeSerializer(String key) => RemoveSerializer(
     raf: _raf, key: key,
   );
+
 
   LineDeserializer deserializer(int startIndex) => LineDeserializer(
     RafComponentReader(_raf, startIndex),
   );
 
-  ByteArrayMultilineDeserializer get lastIndexToEnd {
-    int len = _raf.lengthSync();
-    if (len == 0) return null;
-    int initialIndex = _raf.positionSync();
-    _raf.setPosition(len);
-    var r = ReverseByteReader(_raf, 16);
-    var acc = List<int>();
-    int b = r.nextByte;
-    while (true) {
-      if (b == -1) {
-        break;
-      } else if (
-        b == ControlChars.newlineByte && 
-        acc.length > 0 && 
-        acc.first == ControlChars.indexPrefixByte)
-      {
-        break;
-      } else {
-        acc.insert(0, b);
-        b = r.nextByte;
-      }
+  ChunkLineReader _readChunks(int startIndex) => ChunkLineReader(
+    raf: _raf, startIndex: startIndex, bufferSize: 16,
+  );
+  int _writeChunks(ChunkLineReader reader) {
+    var startIndex = _raf.positionSync();
+    for (List<int> buffer in reader) {
+      _raf.writeFromSync(buffer);
     }
-    _raf.setPositionSync(initialIndex);
-    return ByteArrayMultilineDeserializer(acc);
+    return startIndex;
   }
+
+  IndexTailIterable get indexTail => IndexTailReader(_raf).tailLines;
 
   int get length => _raf.lengthSync();
 
@@ -81,7 +72,7 @@ class CommitFile {
 
   CommitFileReplay get replay => CommitFileReplay(_raf);
 
-  void compaction({
+  Map<int, int> compaction({
     @required void map(LineDeserializer deserializer),
     @required Iterable<int> reduce(),
   }) {
@@ -90,12 +81,10 @@ class CommitFile {
     }
 
     var compactionFile = CommitFile(_randomCompactionPath);
-    const int bufferSize = 16;
-    for (int startIndex in reduce()) {
-      var ito = RafComponentReader(_raf, startIndex).chunks(bufferSize);
-      for (List<int> chunk in ito) {
-        _raf.writeFromSync(chunk);
-      }
+    var newIndexForOldIndex = Map<int, int>();
+    for (int oldIndex in reduce()) {
+      int newIndex = compactionFile._writeChunks(_readChunks(oldIndex));
+      newIndexForOldIndex[oldIndex] = newIndex;
     }
     
     compactionFile.flushAndClose();
@@ -106,6 +95,7 @@ class CommitFile {
     File(compactionFile.path).renameSync(path);
     backupFile.deleteSync();
     _openRaf();
+    return newIndexForOldIndex;
   }
 
   String get _randomCompactionPath => _suffixedFilenamePath(path, identifier());

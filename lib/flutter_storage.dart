@@ -1,6 +1,8 @@
 library flutter_storage;
 
 export 'src/identifier.dart';
-export 'src/serialization.dart';
+export 'src/serializer.dart';
+export 'src/deserializer.dart';
+export 'src/model.dart';
 export 'src/storage.dart';
-export 'src/frontend_entries.dart';
+export 'src/entry_info.dart';

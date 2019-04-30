@@ -1,11 +1,4 @@
-import 'dart:collection';
 import 'commit_file.dart';
-// import 'backend_entries.dart';
-// import 'frontend_entries.dart';
-// import 'serialization.dart';
-// import 'log_line.dart';
-// import 'log_range.dart';
-// import 'line_serializer.dart';
 import 'serializer.dart';
 import 'deserializer.dart';
 import 'model.dart';
@@ -13,6 +6,7 @@ import 'index.dart';
 import 'line_deserializer.dart';
 import 'line_serializer.dart';
 import 'entry_info.dart';
+import 'entry_info_private.dart';
 
 const String _closedErrorMsg = "Storage cannot be used after it's closed";
 
@@ -35,23 +29,21 @@ class Storage {
       }
 
   void _readIndex() {
-    var multiDeserializer = _log.lastIndexToEnd;
-    if (multiDeserializer != null) {
-      LineDeserializer deserialize = multiDeserializer.nextLine;
-      while (deserialize != null) {
-        var info = deserialize.entryInfo;
-        if (info is IndexInfo) {
-          _index = Index.decode(null, info.modelVersion, deserialize);
-        } else {
-          if (_index == null) {
-            _index = Index();
-          }
-          _index[info.key] = deserialize.startIndex;
-        }
-        deserialize = multiDeserializer.nextLine;
+    var tail = List<_EntryIndexAndStartIndex>();
+    for (LineDeserializer deserialize in _log.indexTail) {
+      var entryInfo = deserialize.entryInfo;
+      var startIndex = deserialize.startIndex;
+      if (entryInfo is IndexInfo) {
+        _index = Index.decode(null, entryInfo.modelVersion, deserialize);
+      } else {
+        tail.add(_EntryIndexAndStartIndex(entryInfo, startIndex));
       }
-    } else {
+    }
+    if (_index == null) {
       _index = Index();
+    }
+    for (_EntryIndexAndStartIndex item in tail) {
+      _index[item.entryInfo.key] = item.startIndex;
     }
   }
 
@@ -70,7 +62,7 @@ class Storage {
   void setModel(String key, Model model) {
     assert(_isOpen, _closedErrorMsg);
     _concludeOpenSerializerIfNeeded();
-    var serialize = _log.modelSerializer(key, model);
+    var serialize = _log.modelSerializer(key, model.type, model.version);
     serialize = model.encode(serialize);
     int startIndex = serialize.conclude();
     _index[key] = startIndex;
@@ -106,8 +98,8 @@ class Storage {
   ///
   bool remove(String key) {
     assert(_isOpen, _closedErrorMsg);
-    var startIndex = _index.remove(key);
     _log.removeSerializer(key).conclude();
+    var startIndex = _index.remove(key);
     return startIndex > -1;
   }
 
@@ -149,26 +141,22 @@ class Storage {
   /// 
   void compaction() {
     assert(_isOpen, _closedErrorMsg);    
-    var acc = Map<String, int>();
-    _log.compaction(
+    var keepIndex = Map<String, int>();
+    var newIdxForOldIdx = _log.compaction(
       map: (LineDeserializer deserialize) {
         var info = deserialize.entryInfo;
-        if (info is ModelInfo) {
-          acc[info.key] = deserialize.startIndex;
-        } else if (info is ValueInfo) {
-          acc[info.key] = deserialize.startIndex;
+        if (info is ModelInfo || info is ValueInfo) {
+          keepIndex[info.key] = deserialize.startIndex;
         } else if (info is RemoveInfo) {
-          acc.remove(info.key);
+          keepIndex.remove(info.key);
         }
       },
-      reduce: () => acc.values,
+      reduce: () => keepIndex.values,
     );
-
-    _index.clear();
-    for (MapEntry<String, int> entry in acc.entries) {
-      _index[entry.key] = entry.value;
-    }
-    _log.indexSerializer(_index).conclude();
+    _index.replaceIndex(keepIndex.map<String, int>((String key, int oldIdx) {
+      return MapEntry<String, int>(key, newIdxForOldIdx[oldIdx]);
+    }));
+    _log.serializeIndex(_index);
   }
 
   /// Get the stale data ratio
@@ -224,8 +212,8 @@ class Storage {
   /// will be performed.
   /// 
   void flushState() {
-    if (_index.changesCount == 0) return;
-    _log.indexSerializer(_index).conclude();
+    // if (_index.changesCount == 0) return;
+    _log.serializeIndex(_index);
     _log.flush();
   }
 
@@ -267,4 +255,13 @@ class Storage {
     _log = CommitFile(path);
     _readIndex();
   }
+}
+
+class _EntryIndexAndStartIndex {
+  final EntryInfo entryInfo;
+  final int startIndex;
+  _EntryIndexAndStartIndex(
+    this.entryInfo,
+    this.startIndex,
+  );
 }

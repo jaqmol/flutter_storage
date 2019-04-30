@@ -1,6 +1,8 @@
 import 'dart:collection';
 
-abstract class ComponentReader extends IterableBase<List<int>> {
-  Iterable<List<int>> chunks(int bufferSize);
+abstract class ComponentReader {
+  bool moveNext();
+  List<int> get current;
   int get startIndex;
+  // Iterable<List<int>> chunks(int bufferSize);
 }

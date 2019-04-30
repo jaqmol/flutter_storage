@@ -36,8 +36,8 @@ import 'deserializer.dart';
 /// Reusing another [Serializer] comes handy when encoding nested data models.
 /// 
 abstract class Model {
-  String type;
-  int version = 0;
+  String get type;
+  int get version;
   Model();
   Serializer encode(Serializer serialize);
   Model.decode(String type, int version, Deserializer deserialize);

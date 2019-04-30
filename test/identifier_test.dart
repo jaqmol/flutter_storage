@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/flutter_storage.dart';
+import '../lib/src/identifier.dart';
 
 void main() {
   test('Creating one identifier', () {
