@@ -50,16 +50,16 @@ class _ChunkLineReaderIterator extends Iterator<List<int>> {
     return true;
   }
 
-  // List<int> get current => _endIndex == _bufferSize
-  //   ? _buffer
-  //   : _buffer.sublist(0, _endIndex);
-  List<int> get current { 
-    if (_endIndex == _bufferSize) {
-      print('_endIndex == _bufferSize');
-      return _buffer;
-    } else {
-      print('_endIndex < _bufferSize: $_endIndex');
-      return _buffer.sublist(0, _endIndex);
-    }
-  }
+  List<int> get current => _endIndex == _bufferSize
+    ? _buffer
+    : _buffer.sublist(0, _endIndex);
+  // List<int> get current { 
+  //   if (_endIndex == _bufferSize) {
+  //     print('_endIndex == _bufferSize');
+  //     return _buffer;
+  //   } else {
+  //     print('_endIndex < _bufferSize: $_endIndex');
+  //     return _buffer.sublist(0, _endIndex);
+  //   }
+  // }
 }

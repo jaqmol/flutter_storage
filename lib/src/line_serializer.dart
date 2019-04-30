@@ -60,20 +60,6 @@ class LineSerializer implements Serializer {
         _raf.writeStringSync(entryInfo.toString());
       }
 
-  // // TODO: doesn't make sense as part of this file,
-  // //   because only RemoveInfo is written.
-  // LineSerializer.remove({
-  //   @required RandomAccessFile raf,
-  //   @required String key,
-  // }): assert(raf != null),
-  //     assert(key != null),
-  //     _raf = raf,
-  //     _startIndex = raf.positionSync(),
-  //     entryInfo = RemoveInfo(key),
-  //     _isOpen = true {
-  //       _raf.writeStringSync(entryInfo.toString());
-  //     }
-
   Serializer model(Model model) {
     assert(_isOpen = true, _notOpenErrorMsg);
     _raf.writeStringSync(ModelInfo(

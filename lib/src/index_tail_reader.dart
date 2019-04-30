@@ -101,41 +101,6 @@ class _ByteArrayCompsReader implements ComponentReader {
   }
 
   List<int> get current => _compBuffer;
-
-  // Iterable<List<int>> chunks(int bufferSize) => 
-  //   _CompsBufferChunksIterable(_charIterator, bufferSize);
 }
-
-// class _CompsBufferChunksIterable extends IterableBase<List<int>> {
-//   final Iterator<int> _lineBufferIterable;
-//   final int _bufferSize;
-//   _CompsBufferChunksIterable(Iterator<int> lineBufferIterable, int bufferSize)
-//     : this._lineBufferIterable = lineBufferIterable,
-//       this._bufferSize = bufferSize;
-//   _CompsBufferChunksIterator get iterator => 
-//     _CompsBufferChunksIterator(_lineBufferIterable, _bufferSize);
-// }
-
-// class _CompsBufferChunksIterator extends Iterator<List<int>> {
-//   final Iterator<int> _lineBufferIterable;
-//   final List<int> _chunksBuffer;
-//   final int _bufferSize;
-
-//   _CompsBufferChunksIterator(Iterator<int> lineBufferIterable, int bufferSize)
-//     : _lineBufferIterable = lineBufferIterable,
-//       _chunksBuffer = List<int>(),
-//       _bufferSize = bufferSize;
-
-//   bool moveNext() {
-//     _chunksBuffer.clear();
-//     while(_lineBufferIterable.moveNext() && _chunksBuffer.length < _bufferSize) {
-//       int b = _lineBufferIterable.current;
-//       _chunksBuffer.add(b);
-//     }
-//     return _chunksBuffer.length > 0;
-//   }
-
-//   List<int> get current => _chunksBuffer;
-// }
 
 
