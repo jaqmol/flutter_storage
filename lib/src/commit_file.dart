@@ -3,9 +3,9 @@ import 'package:meta/meta.dart';
 import 'identifier.dart';
 import 'package:path/path.dart' as p;
 import 'commit_file_replay.dart';
-import 'line_serializer.dart';
-import 'line_deserializer.dart';
-import 'remove_serializer.dart';
+import 'serialization/line_serializer.dart';
+import 'serialization/line_deserializer.dart';
+import 'serialization/remove_serializer.dart';
 // import 'control_chars.dart';
 // import 'model.dart';
 import 'index.dart';
@@ -29,15 +29,18 @@ class CommitFile {
     _raf = File(path).openSync(mode: FileMode.append);
   }
 
-  int serializeIndex(Index index) => LineSerializer.serializeIndex(
-    raf: _raf, index: index,
-  ).conclude();
-  LineSerializer valueSerializer(String key) => LineSerializer.value(
-    raf: _raf, key: key,
+  LineSerializer indexSerializer(int indexVersion) => LineSerializer.index(
+    raf: _raf, indexVersion: indexVersion,
   );
+
+  LineSerializer valueSerializer(String key, StartIndexCallback callback) => LineSerializer.value(
+    raf: _raf, key: key, startIndexCallback: callback,
+  );
+
   LineSerializer modelSerializer(String key, String modelType, int modelVersion) => LineSerializer.model(
     raf: _raf, key: key, modelType: modelType, modelVersion: modelVersion,
   );
+
   RemoveSerializer removeSerializer(String key) => RemoveSerializer(
     raf: _raf, key: key,
   );
@@ -67,22 +70,44 @@ class CommitFile {
     _raf.closeSync();
   }
 
-  void flush() => _raf.flushSync();
+  bool flush() {
+    _raf.flushSync();
+    return true;
+  }
   void close() => _raf.closeSync();
 
   CommitFileReplay get replay => CommitFileReplay(_raf);
 
-  Map<int, int> compaction({
-    @required void map(LineDeserializer deserializer),
-    @required Iterable<int> reduce(),
-  }) {
-    for (LineDeserializer deserialize in replay) {
-      map(deserialize);
-    }
+  // Map<int, int> compaction({
+  //   @required void map(LineDeserializer deserializer),
+  //   @required Iterable<int> reduce(),
+  // }) {
+  //   for (LineDeserializer deserialize in replay) {
+  //     map(deserialize);
+  //   }
 
+  //   var compactionFile = CommitFile(_randomCompactionPath);
+  //   var newIndexForOldIndex = Map<int, int>();
+  //   for (int oldIndex in reduce()) {
+  //     int newIndex = compactionFile._writeChunks(_readChunks(oldIndex));
+  //     newIndexForOldIndex[oldIndex] = newIndex;
+  //   }
+    
+  //   compactionFile.flushAndClose();
+  //   flushAndClose();
+    
+  //   _raf = null;
+  //   var backupFile = File(path).renameSync(compactionBackupPath);
+  //   File(compactionFile.path).renameSync(path);
+  //   backupFile.deleteSync();
+  //   _openRaf();
+  //   return newIndexForOldIndex;
+  // }
+
+  Map<int, int> compaction(Iterable<int> indexesToKeep) {
     var compactionFile = CommitFile(_randomCompactionPath);
     var newIndexForOldIndex = Map<int, int>();
-    for (int oldIndex in reduce()) {
+    for (int oldIndex in indexesToKeep) {
       int newIndex = compactionFile._writeChunks(_readChunks(oldIndex));
       newIndexForOldIndex[oldIndex] = newIndex;
     }

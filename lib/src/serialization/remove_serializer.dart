@@ -19,7 +19,7 @@ class RemoveSerializer {
         _raf.writeStringSync(entryInfo.toString());
       }
 
-  int conclude() {
+  int concludeWithStartIndex() {
     _raf.writeStringSync('\n');
     return _startIndex;
   }

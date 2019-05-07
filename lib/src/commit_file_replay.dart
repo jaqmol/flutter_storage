@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:collection';
-import 'line_deserializer.dart';
+import 'serialization/line_deserializer.dart';
 import 'raf_component_reader.dart';
 
 class CommitFileReplay extends IterableBase<LineDeserializer> {

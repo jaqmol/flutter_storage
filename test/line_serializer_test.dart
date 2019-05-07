@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
 import 'dart:convert';
-import '../lib/src/escaping.dart';
-import '../lib/src/control_chars.dart';
+import '../lib/src/serialization/escaping.dart';
+import '../lib/src/serialization/control_chars.dart';
 import 'line_serializer_utils.dart';
 
 void main() {

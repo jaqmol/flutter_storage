@@ -49,4 +49,10 @@ abstract class Serializer {
     Map<K, V> components,
     void encodeFn(K k, V v),
   );
+
+  /// Conclude the write operation.
+  /// 
+  /// Always finish writing of values with [conclude].
+  /// 
+  void conclude();
 }

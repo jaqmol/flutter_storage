@@ -1,16 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'line_serializer_utils.dart';
 import '../lib/src/commit_file.dart';
-import '../lib/src/identifier.dart';
-import '../lib/src/model.dart';
-import '../lib/src/serializer.dart';
-import '../lib/src/deserializer.dart';
-import '../lib/src/entry_info.dart';
-import '../lib/src/entry_info_private.dart';
+import '../lib/src/serialization/entry_info.dart';
+import '../lib/src/serialization/entry_info_private.dart';
 import '../lib/src/index.dart';
-import '../lib/src/line_deserializer.dart';
+import '../lib/src/serialization/line_deserializer.dart';
 import 'dart:io';
-import 'package:meta/meta.dart';
 import 'commit_file_utils.dart';
 
 void main() {
@@ -66,8 +61,7 @@ void main() {
   });
   test('Remove serializer', () {
     var r = CommitFileUtils.serializeModel();
-    var rs = r.commitFile.removeSerializer(r.key);
-    int removeUserStartIndex = rs.conclude();
+    int removeUserStartIndex = r.commitFile.removeSerializer(r.key).concludeWithStartIndex();
     var ud = r.commitFile.deserializer(r.startIndex);
     var rd = r.commitFile.deserializer(removeUserStartIndex);
     expect(r.key, equals(ud.entryInfo.key));
@@ -166,7 +160,7 @@ void main() {
       var ke = r.keys[i];
       var s = c.modelSerializer(ke, cu.type, cu.version);
       cu.encode(s);
-      int newStartIndex = s.conclude();
+      int newStartIndex = s.concludeWithStartIndex();
       idx[ke] = newStartIndex;
       int oldStartIndex = r.startIndexes[i];
       expect(newStartIndex, greaterThan(oldStartIndex));
@@ -174,21 +168,8 @@ void main() {
 
     int sizeBeforeCompaction = File(filename).statSync().size;
 
-    var keepIndex = Map<String, int>();
-    var newIdxForOldIdx = r.commitFile.compaction(
-      map: (LineDeserializer deserialize) {
-        var info = deserialize.entryInfo;
-        if (info is ModelInfo || info is ValueInfo) {
-          keepIndex[info.key] = deserialize.startIndex;
-        } else if (info is RemoveInfo) {
-          keepIndex.remove(info.key);
-        }
-      },
-      reduce: () => keepIndex.values,
-    );
-    idx.replaceIndex(keepIndex.map<String, int>((String key, int oldIdx) {
-      return MapEntry<String, int>(key, newIdxForOldIdx[oldIdx]);
-    }));
+    var newIdxForOldIdx = c.compaction(idx.startIndexes);
+    idx.replaceStartIndexes(newIdxForOldIdx);
 
     int sizeAfterCompaction = File(filename).statSync().size;
     expect(sizeAfterCompaction, lessThan(sizeBeforeCompaction));

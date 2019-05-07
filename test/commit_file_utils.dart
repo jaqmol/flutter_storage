@@ -1,8 +1,8 @@
 import '../lib/src/commit_file.dart';
 import '../lib/src/identifier.dart';
-import '../lib/src/serializer.dart';
-import '../lib/src/deserializer.dart';
-import '../lib/src/model.dart';
+import '../lib/src/serialization/serializer.dart';
+import '../lib/src/serialization/deserializer.dart';
+import '../lib/src/serialization/model.dart';
 import '../lib/src/index.dart';
 import 'package:meta/meta.dart';
 import 'line_serializer_utils.dart';
@@ -119,9 +119,12 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
     var filename = 'value_commit_file.scl';
     var c = CommitFile(filename);
     var key = identifier();
-    var s = c.valueSerializer(key);
+    int startIndex;
+    var s = c.valueSerializer(key, (int idx) {
+      startIndex = idx;
+    });
     s.string(LineSerializerUtils.testText);
-    int startIndex = s.conclude();
+    s.conclude();
     return CommitFileValueResult(c, filename, key, startIndex);
   }
 
@@ -129,7 +132,9 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
     var filename = 'empty_index_commit_file.scl';
     var c = CommitFile(filename);
     var i = Index();
-    int startIndex = c.serializeIndex(i);
+    var s = c.indexSerializer(i.version);
+    i.encode(s);
+    int startIndex = s.concludeWithStartIndex();
     return CommitFileIndexResult(c, filename, i, startIndex);
   }
   
@@ -145,7 +150,9 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
     for (int i = 0; i < r2.keys.length; i++) {
       idx[r2.keys[i]] = r2.startIndexes[i];
     }
-    c.serializeIndex(idx);
+    var s = c.indexSerializer(idx.version);
+    idx.encode(s);
+    s.concludeWithStartIndex();
     return CommitFileFullIndexResult(c, filename, r1.keys, r1.words, r2.keys, r2.users, idx);
   }
 
@@ -157,9 +164,12 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
     var startIndexes = List<int>();
     for (String word in words) {
       var key = identifier();
-      var s = c.valueSerializer(key);
+      int startIndex;
+      var s = c.valueSerializer(key, (int idx) {
+        startIndex = idx;
+      });
       s.string(word);
-      int startIndex = s.conclude();
+      s.conclude();
       keys.add(key);
       startIndexes.add(startIndex);
     }
@@ -174,7 +184,7 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
     var k = identifier();
     var s = c.modelSerializer(k, user.type, user.version);
     user.encode(s);
-    int startIndex = s.conclude();
+    int startIndex = s.concludeWithStartIndex();
     return CommitFileModelResult(c, filename, k, user, startIndex);
   }
 
@@ -191,7 +201,7 @@ Kalia	Bryant	57006	2018-10-10T04:49:59-07:00""";
       var k = identifier();
       var s = c.modelSerializer(k, u.type, u.version);
       u.encode(s);
-      startIndexes.add(s.conclude());
+      startIndexes.add(s.concludeWithStartIndex());
       keys.add(k);
     }
     return MultipleCommitFileModelResults(c, filename, keys, users, startIndexes);

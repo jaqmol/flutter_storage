@@ -1,5 +1,5 @@
 import 'component_reader.dart';
-import 'control_chars.dart';
+import 'serialization/control_chars.dart';
 import 'dart:io';
 
 class RafComponentReader extends ComponentReader {

@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:convert';
-import '../lib/src/escaping.dart';
-import '../lib/src/unescaping.dart';
-import '../lib/src/control_chars.dart';
+import '../lib/src/serialization/escaping.dart';
+import '../lib/src/serialization/unescaping.dart';
+import '../lib/src/serialization/control_chars.dart';
 
 void main() {
   test('String escaping', () {

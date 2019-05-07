@@ -5,27 +5,28 @@ import 'escaping.dart';
 import 'package:meta/meta.dart';
 import 'entry_info.dart';
 import 'entry_info_private.dart';
-import 'index.dart';
 
 String _notOpenErrorMsg = "Attempted write operation on concluded Serializer!";
+
+typedef void StartIndexCallback(int startIndex);
 
 class LineSerializer implements Serializer {
   final RandomAccessFile _raf;
   final _startIndex;
   final EntryInfo entryInfo;
+  StartIndexCallback _startIndexCallback;
   bool _isOpen;
 
-  LineSerializer.serializeIndex({
+  LineSerializer.index({
     @required RandomAccessFile raf,
-    @required Index index,
+    @required int indexVersion,
   }): assert(raf != null),
-      assert(index != null),
+      assert(indexVersion != null),
       _raf = raf,
       _startIndex = raf.positionSync(),
-      entryInfo = IndexInfo(index.version),
+      entryInfo = IndexInfo(indexVersion),
       _isOpen = true {
         _raf.writeStringSync(entryInfo.toString());
-        index.encode(this);
       }
 
   LineSerializer.model({
@@ -51,11 +52,14 @@ class LineSerializer implements Serializer {
   LineSerializer.value({
     @required RandomAccessFile raf,
     @required String key,
+    @required StartIndexCallback startIndexCallback,
   }): assert(raf != null),
       assert(key != null),
+      assert(startIndexCallback != null),
       _raf = raf,
       _startIndex = raf.positionSync(),
       entryInfo = ValueInfo(key),
+      _startIndexCallback = startIndexCallback,
       _isOpen = true {
         _raf.writeStringSync(entryInfo.toString());
       }
@@ -128,12 +132,16 @@ class LineSerializer implements Serializer {
     return this;
   }
 
-  int conclude() {
-    if (_isOpen) {
-      _raf.writeStringSync('\n');
-      _isOpen = false;
-    }
+  int concludeWithStartIndex() {
+    assert(_isOpen = true, _notOpenErrorMsg);
+    _raf.writeStringSync('\n');
+    _isOpen = false;
     return _startIndex;
+  }
+
+  void conclude() {
+    assert(_startIndexCallback != null);
+    _startIndexCallback(concludeWithStartIndex());
   }
 
   bool get isOpen => _isOpen;

@@ -1,11 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
-import 'dart:convert';
-import '../lib/src/escaping.dart';
-import '../lib/src/control_chars.dart';
 import 'line_serializer_utils.dart';
-import '../lib/src/line_deserializer.dart';
-import '../lib/src/raf_component_reader.dart';
 
 void main() {
   test('String value deserialization', () {

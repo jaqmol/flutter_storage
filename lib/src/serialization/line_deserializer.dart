@@ -2,7 +2,7 @@ import 'deserializer.dart';
 import 'unescaping.dart';
 import 'dart:convert';
 import 'entry_info.dart';
-import 'component_reader.dart';
+import '../component_reader.dart';
 
 class LineDeserializer implements Deserializer {
   ComponentReader _reader;

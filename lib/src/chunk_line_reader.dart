@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:io';
 import 'package:meta/meta.dart';
-import 'control_chars.dart';
+import 'serialization/control_chars.dart';
 
 class ChunkLineReader extends IterableBase<List<int>> {
   final RandomAccessFile _raf;
@@ -53,13 +53,4 @@ class _ChunkLineReaderIterator extends Iterator<List<int>> {
   List<int> get current => _endIndex == _bufferSize
     ? _buffer
     : _buffer.sublist(0, _endIndex);
-  // List<int> get current { 
-  //   if (_endIndex == _bufferSize) {
-  //     print('_endIndex == _bufferSize');
-  //     return _buffer;
-  //   } else {
-  //     print('_endIndex < _bufferSize: $_endIndex');
-  //     return _buffer.sublist(0, _endIndex);
-  //   }
-  // }
 }

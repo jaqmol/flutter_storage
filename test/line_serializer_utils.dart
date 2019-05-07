@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
-import '../lib/src/line_serializer.dart';
+import '../lib/src/serialization/line_serializer.dart';
 import '../lib/src/identifier.dart';
-import '../lib/src/line_deserializer.dart';
+import '../lib/src/serialization/line_deserializer.dart';
 import '../lib/src/raf_component_reader.dart';
 
 class LineSerializerUtils {
@@ -17,10 +17,10 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var filename = 'string_value_serialization.scl';
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.string(testText);
     expect(s.isOpen, isTrue);
-    s.conclude();
+    s.concludeWithStartIndex();
     expect(s.isOpen, isFalse);
     raf.flushSync();
     raf.closeSync();
@@ -36,9 +36,9 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var filename = 'byte_value_serialization.scl';
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.bytes(dartLogo);
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 
@@ -49,10 +49,10 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var filename = 'boolean_value_serialization.scl';
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.boolean(true);
     s.boolean(false);
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 
@@ -63,10 +63,10 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var filename = 'integer_value_serialization.scl';
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.integer(23);
     s.integer(42);
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 
@@ -77,10 +77,10 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var filename = 'float_value_serialization.scl';
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.float(42.15);
     s.float(23.13);
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 
@@ -92,9 +92,9 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
     var raf = File(filename).openSync(mode: FileMode.append);
     String key = identifier();
     List<String> words = testText.split(' ');
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.list<String>(words, (String w) => s.string(w));
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 
@@ -112,9 +112,9 @@ Nunc at nisi eu nunc hendrerit viverra eu eu elit. Phasellus maximus massa eget 
       indexForWord[words[i]] = i;
     }
 
-    var s = LineSerializer.value(raf: raf, key: key);
+    var s = LineSerializer.value(raf: raf, key: key, startIndexCallback: (_) {});
     s.map<String, int>(indexForWord, (String w, int i) => s.string(w).integer(i));
-    s.conclude();
+    s.concludeWithStartIndex();
     raf.flushSync();
     raf.closeSync();
 

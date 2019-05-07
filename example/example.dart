@@ -24,33 +24,39 @@ void main() {
     var street = Street('Cento Case Lane', houses);
 
     // Save the street to the database
-    storage.setModel(street.name, street);
+    storage.write((Writer writer) {
+      writer.putModel(street.name, street);
+    });
 
     // Retrieve the saved street
-    var deserialize = storage.entry(street.name);
-    var retrievedStreet = Street.decode(deserialize);
-    print('retrievedStreet.name: ${retrievedStreet.name}');
-    print('retrievedStreet.houses.length: ${retrievedStreet.houses.length}');
+    storage.read((Reader reader) {
+      var deserialize = reader.getEntry(street.name);
+      var retrievedStreet = Street.decode(deserialize);
+      print('retrievedStreet.name: ${retrievedStreet.name}');
+      print('retrievedStreet.houses.length: ${retrievedStreet.houses.length}');
+    });
 
     // Iterate all the entries
-    for (Deserializer deserialize in storage.values) {
-      // A database can contain all kinds of entries,
-      // thus a type-check is necessary:
-      var info = deserialize.entryInfo as ModelInfo;
-      if (info.modelType == Street.staticType) {
-        var streetEntry = Street.decode(deserialize);
-        print('streetEntry.name: ${streetEntry.name}');
-        print('streetEntry.houses.length: ${streetEntry.houses.length}');
+    storage.read((Reader reader) {
+      for (Deserializer deserialize in reader.values) {
+        // A database can contain all kinds of entries,
+        // thus a type-check is necessary:
+        var info = deserialize.entryInfo as ModelInfo;
+        if (info.modelType == Street.staticType) {
+          var streetEntry = Street.decode(deserialize);
+          print('streetEntry.name: ${streetEntry.name}');
+          print('streetEntry.houses.length: ${streetEntry.houses.length}');
+        }
       }
-    }
+    });
   });
 }
 
 class Street implements Model {
-  // Each model needs to have static [type] field
-  // to identify it's type before decoding:
+  // Each model needs to have a [type] field
+  // you can make it static to identify it's type for decoding:
   static final String staticType = 'street';
-  final String type = 'street';
+  final String type = staticType;
   final int version = 0;
   final String name;
   final List<House> houses;
@@ -75,7 +81,7 @@ class Street implements Model {
 }
 
 class House implements Model {
-  // Each model needs to have static [type] field
+  // Each model needs to a [type] field
   // to identify it's type before decoding:
   final String type = 'house';
   final int version = 0;

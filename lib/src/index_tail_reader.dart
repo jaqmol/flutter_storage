@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'control_chars.dart';
+import 'serialization/control_chars.dart';
 import 'dart:collection';
 import 'component_reader.dart';
-import 'line_deserializer.dart';
+import 'serialization/line_deserializer.dart';
 
 class IndexTailReader {
   final RandomAccessFile _raf;
@@ -20,6 +20,7 @@ class IndexTailReader {
 
   void _reverseReadUntilLastIndex() {
     int index = _rafLength - 1;
+    if (index < 0) return;
     _raf.setPositionSync(index);
     int b = _raf.readByteSync();
 

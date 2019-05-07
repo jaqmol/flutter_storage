@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/src/entry_info.dart';
-import '../lib/src/entry_info_private.dart';
+import '../lib/src/serialization/entry_info.dart';
+import '../lib/src/serialization/entry_info_private.dart';
 
 void main() {
   test("Index info", () {
