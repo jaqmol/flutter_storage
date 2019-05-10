@@ -153,47 +153,52 @@ void main() {
     File(path).deleteSync();
   });
 
-  // test("Storage Undo", () async {
-  //   var path = './storage-test-file-undo.scl';
-  //   var expectedPeople = generatePeople(gen, 100);
-  //   var expectedMeals = generateMeals(gen, 100);
+  test("Storage Undo", () async {
+    var path = './storage-test-file-undo.scl';
+    var expectedMeals = generateMeals(gen, 100);
 
-  //   var storage = Storage(path);
+    var storage = Storage(path);
 
-  //   storage.write((Writer w) {
-  //     addEntries(w, expectedPeople);
-  //     addEntries(w, expectedMeals);
-  //   });
+    int addedCount = await storage.write<int>((Writer w) async =>
+      addEntries(w, expectedMeals)
+    );
 
-  //   int originalMealsCount = await storage.read<int>(
-  //     (Reader r) async => countOfModelType(r, Meal.staticType)
-  //   );
+    int originalMealsCount = await storage.read<int>(
+      (Reader r) async => countOfModelType(r, Meal.staticType)
+    );
 
-  //   var removedEntries = await removeRandomEntries<Meal>(
-  //     gen, storage, expectedMeals, deserializeMeal, checkMealToRemove,
-  //   );
+    var removedMeals = await removeRandomEntries<Meal>(
+      gen, storage, expectedMeals, deserializeMeal, checkMealToRemove,
+    );
 
-  //   int mealsCountAfterRemove = await storage.read<int>(
-  //     (Reader r) async => countOfModelType(r, Meal.staticType)
-  //   );
-  //   expect(originalMealsCount, greaterThan(mealsCountAfterRemove));
-
-  //   storage.write((Writer w) {
-  //     removedEntries.forEach((_) => w.undo());
-  //   });
-
-  //   int mealsCountAfterUndo = await storage.read<int>(
-  //     (Reader r) async => countOfModelType(r, Meal.staticType)
-  //   );
-  //   expect(mealsCountAfterUndo, equals(originalMealsCount));
-  //   expect(mealsCountAfterUndo, greaterThan(mealsCountAfterRemove));
-
-  //   await storage.read((Reader r) async =>
-  //     checkRandomEntry<Meal>(gen, r, expectedMeals, checkMeal)
-  //   );
+    int mealsCountAfterRemove = await storage.read<int>(
+      (Reader r) async => countOfModelType(r, Meal.staticType)
+    );
     
-  //   File(path).deleteSync();
-  // });
+    print('originalMealsCount: $originalMealsCount');
+    print('addedCount: $addedCount');
+    print('removedMeals.length: ${removedMeals.length}');
+    print('mealsCountAfterRemove: $mealsCountAfterRemove');
+    expect(originalMealsCount, greaterThan(mealsCountAfterRemove));
+
+    // expect(originalMealsCount, equals(mealsCountAfterRemove + removedMeals.length));
+
+    // storage.write((Writer w) {
+    //   removedMeals.forEach((_) => w.undo());
+    // });
+
+    // int mealsCountAfterUndo = await storage.read<int>(
+    //   (Reader r) async => countOfModelType(r, Meal.staticType)
+    // );
+    // expect(mealsCountAfterUndo, equals(originalMealsCount));
+    // expect(mealsCountAfterUndo, greaterThan(mealsCountAfterRemove));
+
+    // await storage.read((Reader r) async =>
+    //   checkRandomEntry<Meal>(gen, r, expectedMeals, checkMeal)
+    // );
+    
+    // File(path).deleteSync();
+  });
 }
 
 int addEntries(Writer op, List<MapEntry<String, Model>> ntrs) {
@@ -258,7 +263,8 @@ Future<List<MapEntry<String, T>>> removeRandomEntries<T extends Model>(
   });
   await storage.write((Writer w) {
     for (MapEntry<String, T> entry in deleteEntries) {
-      w.remove(entry.key);
+      bool didRemove = w.remove(entry.key);
+      expect(didRemove, isTrue);
     }
   });
   return deleteEntries;
@@ -285,22 +291,26 @@ void checkPersonToRemove(Person expectedPerson, Person removedPerson) {
   expect(expectedPerson.birthday, equals(removedPerson.birthday));
 }
 
-int checkCountOfModelType(Reader op, String type, int expectedCount) {
-  int c = countOfModelType(op, type);
+int checkCountOfModelType(Reader r, String type, int expectedCount) {
+  int c = countOfModelType(r, type);
   expect(c, equals(expectedCount));
   return c;
 }
 
-int countOfModelType(Reader op, String type) {
-  int count = 0;
-  for (Deserializer deserialize in op.values) {
+int countOfModelType(Reader r, String type) {
+  int modelTypeCount = 0;
+  int iterationsCount = 0;
+
+  for (Deserializer deserialize in r.values) {
     var info = deserialize.entryInfo;
+    print('entryInfo: $info');
     if (info is ModelInfo && info.modelType == type) {
-      count++;
+      modelTypeCount++;
     }
+    iterationsCount++;
   }
-  return count;
+
+  print('countOfModelType iterationsCount: $iterationsCount');
+
+  return modelTypeCount;
 }
-
-
-

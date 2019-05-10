@@ -16,6 +16,7 @@ class Index extends Model {
   Iterable<String> get keys => _data.keys;
   List<int> get startIndexes {
     List<int> idxs = _data.values.toList()..sort();
+    print('start indexes: $idxs');
     return List<int>.unmodifiable(idxs);
   }
 
@@ -28,8 +29,9 @@ class Index extends Model {
     var lastStartIndex = _data.remove(key);
     if (lastStartIndex != null) {
       _changes.add(MapEntry(key, _RemoveEntry()));
+      return lastStartIndex;
     }
-    return lastStartIndex;
+    return -1;
   }
 
   void clear() {
@@ -67,6 +69,7 @@ class Index extends Model {
       me.value is _ChangeEntry &&
       me.key == lastEntry.key
     );
+    print('priorChangeEntry: $priorChangeEntry');
     if (priorChangeEntry != null) {
       var change = priorChangeEntry.value;
       if (change is _ChangeEntry) {

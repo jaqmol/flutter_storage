@@ -1,4 +1,4 @@
-import '../commit_file.dart';
+import '../commit_file/commit_file.dart';
 import '../index.dart';
 import '../serialization/line_deserializer.dart';
 import '../serialization/entry_info.dart';
