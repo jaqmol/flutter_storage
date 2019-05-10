@@ -2,55 +2,69 @@ import 'deserializer.dart';
 import 'unescaping.dart';
 import 'dart:convert';
 import 'entry_info.dart';
-import '../component_reader.dart';
+import 'control_chars.dart';
+// import '../component_reader.dart';
 
 class LineDeserializer implements Deserializer {
-  ComponentReader _reader;
+  List<int> _data;
+  int _index;
   EntryInfo _entryInfo;
 
-  LineDeserializer(ComponentReader reader)
-    : assert(reader != null),
-      _reader = reader {
-      _readEntryInfo();
-    }
+  LineDeserializer(List<int> data)
+    : assert(data != null),
+      _data = data,
+      _index = 0 {
+        _readEntryInfo();
+      }
 
-  // Iterable<List<int>> chunks(int bufferSize) => _reader.chunks(bufferSize);
+  List<int> _nextComponent() {
+    int semidx = _data.indexOf(ControlChars.semicolonBytes.first, _index);
+    List<int> comp;
+    if (semidx > -1) {
+      comp = _data.sublist(_index, semidx);
+      _index = semidx + 1;
+    } else {
+      comp = _data.sublist(_index);
+      _index = _data.length;
+    }
+    return comp;
+  }
 
   _readEntryInfo() {
     if (_entryInfo != null) return;
-    assert(_reader.moveNext());
-    var infoString = utf8.decode(_reader.current);
+    assert(_index < _data.length);
+    var infoString = utf8.decode(_nextComponent());
     _entryInfo = EntryInfo.fromString(infoString);
   }
 
   EntryInfo get entryInfo => _entryInfo;
 
   String string() {
-    _reader.moveNext();
-    var escaped = utf8.decode(_reader.current);
+    assert(_index < _data.length);
+    var escaped = utf8.decode(_nextComponent());
     return unescapeString(escaped);
   }
 
   List<int> bytes() {
-    _reader.moveNext();
-    return unescapeBytes(_reader.current);
+    assert(_index < _data.length);
+    return unescapeBytes(_nextComponent());
   }
 
   bool boolean() {
-    _reader.moveNext();
-    var v = utf8.decode(_reader.current);
+    assert(_index < _data.length);
+    var v = utf8.decode(_nextComponent());
     return v == 'T';
   }
 
   int integer() {
-    _reader.moveNext();
-    var v = utf8.decode(_reader.current);
+    assert(_index < _data.length);
+    var v = utf8.decode(_nextComponent());
     return int.parse(v, radix: 16);
   }
 
   double float() {
-    _reader.moveNext();
-    var v = utf8.decode(_reader.current);
+    assert(_index < _data.length);
+    var v = utf8.decode(_nextComponent());
     return radixDecodeFloat(v);
   }
 
@@ -70,5 +84,5 @@ class LineDeserializer implements Deserializer {
     );
   }
 
-  int get startIndex => _reader.startIndex;
+  // int get startIndex => _reader.startIndex;
 }

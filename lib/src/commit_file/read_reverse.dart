@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'data_batch.dart';
+
+// TODO: Refactore in DataBatch-support
 
 Stream<List<int>> readReverse(File file) async* {
   await for (_Range range in _reverseRanges(file)) {

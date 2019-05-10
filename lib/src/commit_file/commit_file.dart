@@ -4,6 +4,7 @@ import 'read_line_transformer.dart';
 import 'read_lines_transformer.dart';
 import 'line_writer.dart';
 import 'read_reverse.dart';
+import 'data_batch.dart';
 
 class CommitFile {
   File _file;
@@ -23,15 +24,15 @@ class CommitFile {
     return LineWriter(_file.openWrite(mode: FileMode.append));
   }
 
-  Stream<List<int>> readLine(int startIndex) {
-    return _file.openRead(startIndex).transform<List<int>>(ReadLineTransformer());
+  Stream<DataBatch> readLine(int startIndex) {
+    return _file.openRead(startIndex).transform<DataBatch>(ReadLineTransformer(startIndex));
   }
 
-  Stream<Stream<List<int>>> readLines() {
-    return _file.openRead(0).transform<Stream<List<int>>>(ReadLinesTransformer());
+  Stream<Stream<DataBatch>> readLines() {
+    return _file.openRead(0).transform<Stream<DataBatch>>(ReadLinesTransformer());
   }
 
-  Stream<Stream<List<int>>> readLinesReverse() {
-    return readReverse(_file).transform<Stream<List<int>>>(ReadLinesTransformer());
+  Stream<Stream<DataBatch>> readLinesReverse() {
+    return readReverse(_file).transform<Stream<DataBatch>>(ReadLinesTransformer());
   }
 }

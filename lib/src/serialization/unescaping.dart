@@ -12,22 +12,22 @@ List<int> unescapeBytes(List<int> escaped) {
   var ranges = _rangesOfList(
     searchFor: ControlChars.newlineReplacementBytes,
     searchIn: escaped,
-    replacement: ControlChars.newlineByte,
+    replacement: ControlChars.newlineBytes.first,
   );
   ranges.addAll(_rangesOfList(
     searchFor: ControlChars.returnReplacementBytes, 
     searchIn: escaped,
-    replacement: ControlChars.returnByte,
+    replacement: ControlChars.returnBytes.first,
   ));
   ranges.addAll(_rangesOfList(
     searchFor: ControlChars.semicolonReplacementBytes, 
     searchIn: escaped,
-    replacement: ControlChars.semicolonByte,
+    replacement: ControlChars.semicolonBytes.first,
   ));
   ranges.addAll(_rangesOfList(
     searchFor: ControlChars.colonReplacementBytes, 
     searchIn: escaped,
-    replacement: ControlChars.colonByte,
+    replacement: ControlChars.colonBytes.first,
   ));
   ranges.sort((_Range a, _Range b) => a.start.compareTo(b.start));
 

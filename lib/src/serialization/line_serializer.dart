@@ -5,106 +5,108 @@ import 'escaping.dart';
 import 'package:meta/meta.dart';
 import 'entry_info.dart';
 import 'entry_info_private.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'control_chars.dart';
 
 String _notOpenErrorMsg = "Attempted write operation on concluded Serializer!";
 
 typedef void StartIndexCallback(int startIndex);
 
 class LineSerializer implements Serializer {
-  final RandomAccessFile _raf;
-  final _startIndex;
+  final StreamSink<List<int>> _sink;
+  final startIndex;
   final EntryInfo entryInfo;
-  StartIndexCallback _startIndexCallback;
   bool _isOpen;
 
   LineSerializer.index({
-    @required RandomAccessFile raf,
+    @required StreamSink<List<int>> sink,
     @required int indexVersion,
-  }): assert(raf != null),
+    @required this.startIndex,
+  }): assert(sink != null),
       assert(indexVersion != null),
-      _raf = raf,
-      _startIndex = raf.positionSync(),
+      assert(startIndex != null),
+      _sink = sink,
       entryInfo = IndexInfo(indexVersion),
       _isOpen = true {
-        _raf.writeStringSync(entryInfo.toString());
+        _sink.add(utf8.encode(entryInfo.toString()));
       }
 
   LineSerializer.model({
-    @required RandomAccessFile raf,
+    @required StreamSink<List<int>> sink,
     @required String key,
     @required String modelType,
     @required int modelVersion,
-  }): assert(raf != null),
+    @required this.startIndex,
+  }): assert(sink != null),
       assert(key != null),
       assert(modelType != null),
       assert(modelVersion != null),
-      _raf = raf,
-      _startIndex = raf.positionSync(),
+      assert(startIndex != null),
+      _sink = sink,
       entryInfo = ModelInfo(
         modelType: modelType,
         modelVersion: modelVersion,
         key: key,
       ),
       _isOpen = true {
-        _raf.writeStringSync(entryInfo.toString());
+        _sink.add(utf8.encode(entryInfo.toString()));
       }
 
   LineSerializer.value({
-    @required RandomAccessFile raf,
+    @required StreamSink<List<int>> sink,
     @required String key,
-    @required StartIndexCallback startIndexCallback,
-  }): assert(raf != null),
+    @required this.startIndex,
+  }): assert(sink != null),
       assert(key != null),
-      assert(startIndexCallback != null),
-      _raf = raf,
-      _startIndex = raf.positionSync(),
+      assert(startIndex != null),
+      _sink = sink,
       entryInfo = ValueInfo(key),
-      _startIndexCallback = startIndexCallback,
       _isOpen = true {
-        _raf.writeStringSync(entryInfo.toString());
+        _sink.add(utf8.encode(entryInfo.toString()));
       }
 
   Serializer model(Model model) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(ModelInfo(
+    _sink.add(utf8.encode(ModelInfo(
       modelType: model.type,
       modelVersion: model.version,
-    ).toString());
+    ).toString()));
     return this;
   }
 
   Serializer string(String component) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(';');
-    _raf.writeStringSync(escapeString(component));
+    _sink.add(ControlChars.semicolonBytes);
+    _sink.add(utf8.encode(escapeString(component)));
     return this;
   }
 
   Serializer bytes(Iterable<int> component) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(';');
-    _raf.writeFromSync(escapeBytes(component));
+    _sink.add(ControlChars.semicolonBytes);
+    _sink.add(escapeBytes(component));
     return this;
   }
 
   Serializer boolean(bool component) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(';');
-    _raf.writeStringSync(component ? 'T' : 'F');
+    _sink.add(ControlChars.semicolonBytes);
+    _sink.add(utf8.encode(component ? 'T' : 'F'));
     return this;
   }
 
   Serializer integer(int component) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(';');
-    _raf.writeStringSync(component.toRadixString(16));
+    _sink.add(ControlChars.semicolonBytes);
+    _sink.add(utf8.encode(component.toRadixString(16)));
     return this;
   }
 
   Serializer float(double component) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync(';');
-    _raf.writeStringSync(radixEncodeFloat(component));
+    _sink.add(ControlChars.semicolonBytes);
+    _sink.add(utf8.encode(radixEncodeFloat(component)));
     return this;
   }
 
@@ -132,16 +134,10 @@ class LineSerializer implements Serializer {
     return this;
   }
 
-  int concludeWithStartIndex() {
+  Future conclude() {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _raf.writeStringSync('\n');
     _isOpen = false;
-    return _startIndex;
-  }
-
-  void conclude() {
-    assert(_startIndexCallback != null);
-    _startIndexCallback(concludeWithStartIndex());
+    return _sink.close();
   }
 
   bool get isOpen => _isOpen;

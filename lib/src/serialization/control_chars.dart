@@ -12,20 +12,20 @@ class ControlChars {
   static final newlineChar = '\n';
   static final returnChar = '\r';
 
-  static final indexPrefixByte = utf8.encode(indexPrefixChar).first;
+  static final indexPrefixBytes = utf8.encode(indexPrefixChar);
 
-  static final semicolonByte = utf8.encode(semicolonChar).first;
-  static final colonByte = utf8.encode(colonChar).first;
-  static final newlineByte = utf8.encode(newlineChar).first;
-  static final returnByte = utf8.encode(returnChar).first;
+  static final semicolonBytes = utf8.encode(semicolonChar);
+  static final colonBytes = utf8.encode(colonChar);
+  static final newlineBytes = utf8.encode(newlineChar);
+  static final returnBytes = utf8.encode(returnChar);
 
   static final semicolonReplacementChars = '%3B';
   static final colonReplacementChars = '%3A';
   static final newlineReplacementChars = '%0A';
   static final returnReplacementChars = '%0D';
   
-  static final List<int> semicolonReplacementBytes = utf8.encode(semicolonReplacementChars);
-  static final List<int> colonReplacementBytes = utf8.encode(colonReplacementChars);
-  static final List<int> newlineReplacementBytes = utf8.encode(newlineReplacementChars);
-  static final List<int> returnReplacementBytes = utf8.encode(returnReplacementChars);
+  static final semicolonReplacementBytes = utf8.encode(semicolonReplacementChars);
+  static final colonReplacementBytes = utf8.encode(colonReplacementChars);
+  static final newlineReplacementBytes = utf8.encode(newlineReplacementChars);
+  static final returnReplacementBytes = utf8.encode(returnReplacementChars);
 }

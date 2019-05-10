@@ -1,26 +1,27 @@
-import 'dart:io';
 import 'package:meta/meta.dart';
 import 'entry_info.dart';
 import 'entry_info_private.dart';
+import 'dart:async';
+import 'dart:convert';
 
 class RemoveSerializer {
-  final RandomAccessFile _raf;
+  final StreamSink<List<int>> _sink;
   final EntryInfo entryInfo;
-  final int _startIndex;
+  final int startIndex;
 
   RemoveSerializer({
-    @required RandomAccessFile raf,
+    @required StreamSink<List<int>> sink,
     @required String key,
-  }): assert(raf != null),
+    @required this.startIndex,
+  }): assert(sink != null),
       assert(key != null),
-      _raf = raf,
-      entryInfo = RemoveInfo(key),
-      _startIndex = raf.positionSync(){
-        _raf.writeStringSync(entryInfo.toString());
+      assert(startIndex != null),
+      _sink = sink,
+      entryInfo = RemoveInfo(key) {
+        _sink.add(utf8.encode(entryInfo.toString()));
       }
 
-  int concludeWithStartIndex() {
-    _raf.writeStringSync('\n');
-    return _startIndex;
+  Future conclude() {
+    return _sink.close();
   }
 }

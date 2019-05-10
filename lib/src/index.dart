@@ -3,7 +3,8 @@ import 'serialization/serializer.dart';
 import 'serialization/deserializer.dart';
 
 class Index extends Model {
-  String type = 'index';
+  static String staticType = 'index';
+  String type = staticType;
   int version = 0;
   Map<String, int> _data;
   List<MapEntry<String, _Entry>> _changes;
@@ -69,7 +70,6 @@ class Index extends Model {
       me.value is _ChangeEntry &&
       me.key == lastEntry.key
     );
-    print('priorChangeEntry: $priorChangeEntry');
     if (priorChangeEntry != null) {
       var change = priorChangeEntry.value;
       if (change is _ChangeEntry) {

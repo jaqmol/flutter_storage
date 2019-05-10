@@ -1,4 +1,5 @@
 import 'model.dart';
+import 'dart:async';
 
 abstract class Serializer {
   /// Serialize a [Model] instance using it's [encode(…)] method.
@@ -54,5 +55,5 @@ abstract class Serializer {
   /// 
   /// Always finish writing of values with [conclude].
   /// 
-  void conclude();
+  Future conclude();
 }

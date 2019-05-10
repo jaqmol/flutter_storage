@@ -24,7 +24,7 @@ class LineWriter implements StreamSink<List<int>> {
 
   @override
   Future close() async {
-    _sink.writeCharCode(ControlChars.newlineByte);
+    _sink.add(ControlChars.newlineBytes);
     await _sink.flush();
     return _sink.close();
   }
