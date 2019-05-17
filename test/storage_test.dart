@@ -1,147 +1,114 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_storage/src/storage.dart';
-import 'package:flutter_storage/src/serialization.dart';
-import 'package:flutter_storage/src/frontend_entries.dart';
-import 'test_models.dart';
+import '../lib/src/storage.dart';
+import '../lib/src/serialization/deserializer.dart';
+import '../lib/src/serialization/model.dart';
+import '../lib/src/serialization/entry_info.dart';
 import 'dart:math';
 import 'dart:io';
+import 'storage_test_utils.dart';
+import 'dart:collection';
+import 'package:path/path.dart' as path;
 
 void main() {
+  var tmp = Directory.systemTemp.path;
+  print('Temporary directory: $tmp');
+
   var gen = Random.secure();
 
-  test('Storage', () async {
-    var path = './storage-test-file.scl';
-    var storage = await Storage.open(path);
-    var entry = randomPerson(gen);
-    await storage.setValue(entry.key, entry.value);
-    var deserialize = await storage.value(entry.key);
-    checkPerson(entry.value, deserialize);
-    File(path).deleteSync();
-  });
-
-  test("Storage Add", () async {
-    var path = './storage-test-file-add.scl';
-    var expectedPeople = generatePeople(gen, 100);
-    var expectedMeals = generateMeals(gen, 100);
-
-    var storage = await Storage.open(path);
-
-    await storage.addEntries(expectedPeople);
-    await storage.addEntries(expectedMeals);
-
-    await checkCountOfModelType(storage, Person.type, expectedPeople.length);
-    await checkCountOfModelType(storage, Meal.type, expectedMeals.length);
-
-    await storage.close();
-    storage = await Storage.open(path);
-
-    await checkCountOfModelType(storage, Person.type, expectedPeople.length);
-    await checkCountOfModelType(storage, Meal.type, expectedMeals.length);
-    
-    await checkRandomEntry<Person>(gen, storage, expectedPeople, checkPerson);
-    await checkRandomEntry<Meal>(gen, storage, expectedMeals, checkMeal);
-
-    File(path).deleteSync();
-  });
-
-  test("Storage Remove", () async {
-    var path = './storage-test-file-remove.scl';
-    var expectedPeople = generatePeople(gen, 100);
-    var expectedMeals = generateMeals(gen, 100);
-
-    var storage = await Storage.open(path);
-
-    await storage.addEntries(expectedPeople);
-    await storage.addEntries(expectedMeals);
-
-    var deletedMeals = await removeRandomEntries<Meal>(gen, storage, expectedMeals, checkMealToRemove);
-    await checkCountOfModelType(storage, Person.type, expectedPeople.length);
-
-    for (var deletedEntry in deletedMeals) {
-      Deserializer deserialize = await storage.value(deletedEntry.key);
-      expect(deserialize, isNull);
-    }
-
-    await storage.close();
-    storage = await Storage.open(path);
-
-    await checkCountOfModelType(storage, Person.type, expectedPeople.length);
-    await checkCountOfModelType(storage, Meal.type, expectedMeals.length - deletedMeals.length);
-
-    for (var deletedEntry in deletedMeals) {
-      Deserializer deserialize = await storage.value(deletedEntry.key);
-      expect(deserialize, isNull);
-    }
-
-    File(path).deleteSync();
-  });
-
   test("Storage Compaction", () async {
-    var path = './storage-test-file-compaction.scl';
-    var expectedPeople = generatePeople(gen, 100);
-    var expectedMeals = generateMeals(gen, 100);
+    var filename = path.join(tmp, 'storage_compaction_test.scl');
+    var expectedPeopleMEs = generatePeople(gen, 100);
+    var expectedPeople = Map<String, Person>.fromEntries(expectedPeopleMEs);
+    var expectedMealsMEs = generateMeals(gen, 100);
+    var expectedMeals = Map<String, Meal>.fromEntries(expectedMealsMEs);
 
-    var storage = await Storage.open(path);
+    var storage = await Storage.open(filename);
 
-    await storage.addEntries(expectedPeople);
-    await storage.addEntries(expectedMeals);
+    await addEntries(storage, expectedPeopleMEs);
+    await addEntries(storage, expectedMealsMEs);
 
-    await storage.flushState();
-    int uncompactedLength = File(path).lengthSync();
+    await storage.flush();
+    int uncompactedLength = File(filename).lengthSync();
 
-    await removeRandomEntries<Meal>(gen, storage, expectedMeals, checkMealToRemove);
-    
-    expect(await storage.staleRatio, greaterThan(0.0));
+    storage = await Storage.open(filename);
+
+    var removedPeopleMEs = await removeRandomEntries<Person>(gen, storage, expectedPeopleMEs, deserializePerson, checkPersonToRemove);
+    var removedPeople = Map<String, Person>.fromEntries(removedPeopleMEs);
+    var removedMealsMEs = await removeRandomEntries<Meal>(gen, storage, expectedMealsMEs, deserializeMeal, checkMealToRemove);
+    var removedMeals = HashMap<String, Meal>.fromEntries(removedMealsMEs);
+
+    expect(removedPeople.length, lessThan(expectedPeopleMEs.length));
+    expect(removedMeals.length, lessThan(expectedMealsMEs.length));
+
+    expect(storage.needsCompaction, isTrue);
     await storage.compaction();
 
-    int compactedLength = File(path).lengthSync();
+    int compactedLength = File(filename).lengthSync();
 
     expect(uncompactedLength, greaterThan(compactedLength));
-    File(path).deleteSync();
+
+    storage = await Storage.open(filename);
+
+    for (String personKey in expectedPeople.keys) {
+      var d = await storage.deserializer(personKey);
+      if (removedPeople.containsKey(personKey)) {
+        expect(d, isNull);
+      } else {
+        expect(d, isNotNull);
+      }
+    }
+    for (String mealKey in expectedMeals.keys) {
+      var d = await storage.deserializer(mealKey);
+      if (removedMeals.containsKey(mealKey)) {
+        expect(d, isNull);
+      } else {
+        expect(d, isNotNull);
+      }
+    }
+
+    await File(filename).delete();
   });
 
   test("Storage Undo", () async {
-    var path = './storage-test-file-undo.scl';
-    var expectedPeople = generatePeople(gen, 100);
+    var filename = path.join(tmp, 'storage_undo_test.scl');
     var expectedMeals = generateMeals(gen, 100);
 
-    var storage = await Storage.open(path);
+    var storage = await Storage.open(filename);
+    await addEntries(storage, expectedMeals);
+    int originalMealsCount = await countOfModelType(storage, Meal.staticType);
 
-    await storage.addEntries(expectedPeople);
-    await storage.addEntries(expectedMeals);
-
-    await storage.flushState();
-    int originalMealsCount = await countOfModelType(storage, Meal.type);
-
-    await storage.openUndoGroup();
-    await removeRandomEntries<Meal>(gen, storage, expectedMeals, checkMealToRemove);
-    await storage.closeUndoGroup();
-
-    int mealsCountAfterRemove = await countOfModelType(storage, Meal.type);
+    var removedMeals = await removeRandomEntries<Meal>(
+      gen, storage, expectedMeals, deserializeMeal, checkMealToRemove,
+    );
+    int mealsCountAfterRemove = await countOfModelType(storage, Meal.staticType);
+    
     expect(originalMealsCount, greaterThan(mealsCountAfterRemove));
+    expect(originalMealsCount, equals(mealsCountAfterRemove + removedMeals.length));
 
-    List<UndoAction> actions = await storage.undo();
-
-    for (UndoAction a in actions) {
-      expect(a.key, isNotNull);
-      expect(a.value, isNotNull);
-      expect(a.type, isNotNull);
-    }
-
-    int mealsCountAfterUndo = await countOfModelType(storage, Meal.type);
+    removedMeals.forEach((_) => storage.undo());
+    int mealsCountAfterUndo = await countOfModelType(storage, Meal.staticType);
+    
     expect(mealsCountAfterUndo, equals(originalMealsCount));
     expect(mealsCountAfterUndo, greaterThan(mealsCountAfterRemove));
-
-    await checkRandomEntry<Meal>(gen, storage, expectedMeals, checkMeal);
+    checkRandomEntry<Meal>(gen, storage, expectedMeals, checkMeal);
     
-    File(path).deleteSync();
+    await File(filename).delete();
   });
 }
 
-Future<void> checkRandomEntry<T extends Model>(
+Future<int> addEntries(Storage st, List<MapEntry<String, Model>> ntrs) async {
+  int total = 0;
+  for (MapEntry<String, Model> e in ntrs) {
+    await st.putModel(e.key, e.value);
+    total += 1;
+  }
+  return total;
+}
+
+void checkRandomEntry<T extends Model>(
   Random gen,
   Storage storage,
-  List<StorageEncodeEntry<T>> expectedEntries,
+  List<MapEntry<String, T>> expectedEntries,
   void checker(T expectedEntry, Deserializer deserialize),
 ) async {
   var indexes = List<int>.generate(expectedEntries.length, (int i) => i);
@@ -149,20 +116,21 @@ Future<void> checkRandomEntry<T extends Model>(
     var idx = indexes[gen.nextInt(indexes.length)];
     var expectedEntry = expectedEntries[idx];
     var expectedEntryValue = expectedEntry.value;
-    var deserializeEntry = await storage.value(expectedEntry.key);
+    var deserializeEntry = await storage.deserializer(expectedEntry.key);
     checker(expectedEntryValue, deserializeEntry);
   }
 }
-
 void checkPerson(Person expectedPerson, Deserializer deserialize) {
-  expect(deserialize.meta.type, equals(Person.type));
+  expect(deserialize.entryInfo, isInstanceOf<ModelInfo>());
+  expect((deserialize.entryInfo as ModelInfo).modelType, equals(Person.staticType));
   var receivedPerson = Person.decode(deserialize);
   expect(expectedPerson.name.first, equals(receivedPerson.name.first));
   expect(expectedPerson.name.last, equals(receivedPerson.name.last));
   expect(expectedPerson.birthday, equals(receivedPerson.birthday));
 }
 void checkMeal(Meal expectedMeal, Deserializer deserialize) {
-  expect(deserialize.meta.type, equals(Meal.type));
+  expect(deserialize.entryInfo, isInstanceOf<ModelInfo>());
+  expect((deserialize.entryInfo as ModelInfo).modelType, equals(Meal.staticType));
   var receivedMeal = Meal.decode(deserialize);
   expect(expectedMeal.staple, equals(receivedMeal.staple));
   expect(expectedMeal.vegetable, equals(receivedMeal.vegetable));
@@ -170,42 +138,65 @@ void checkMeal(Meal expectedMeal, Deserializer deserialize) {
   expect(expectedMeal.spice, equals(receivedMeal.spice));
 }
 
-Future<void> checkCountOfModelType(Storage storage, String type, int expectedCount) async {
-  var foundCount = await countOfModelType(storage, type);
-  expect(foundCount, equals(expectedCount));
-}
-
-Future<int> countOfModelType(Storage storage, String type) async {
-  int count = 0;
-  await for (StorageDecodeEntry entry in storage.entries) {
-    if (entry.value.meta.type == type) count++;
-  }
-  return count;
-}
-
-Future<List<StorageEncodeEntry<T>>> removeRandomEntries<T extends Model>(
+Future<List<MapEntry<String, T>>> removeRandomEntries<T extends Model>(
   Random gen,
   Storage storage,
-  List<StorageEncodeEntry<T>> expectedEntries,
-  T checker(T expectedEntry, Deserializer deserialize),
+  List<MapEntry<String, T>> expectedEntries,
+  T deserializeFn(Deserializer deserialize),
+  void checkFn(T expectedEntry, T removedEntry),
 ) async {
   var indexes = List<int>.generate(expectedEntries.length, (int i) => i);
-  var deletedEntries = List<StorageEncodeEntry<T>>();
+  var deleteEntries = List<MapEntry<String, T>>();
   for (int i = 0; i < 50; i++) {
     var idx = indexes.removeAt(gen.nextInt(indexes.length));
     var expectedEntry = expectedEntries[idx];
-    Deserializer deserialize = await storage.remove(expectedEntry.key);
-    T removedItem = checker(expectedEntry.value, deserialize);
-    deletedEntries.add(StorageEncodeEntry(expectedEntry.key, removedItem));
+    var d = await storage.deserializer(expectedEntry.key);
+    T deleteEntry = deserializeFn(d);
+    deleteEntries.add(MapEntry<String, T>(expectedEntry.key, deleteEntry));
   }
-  return deletedEntries;
+  for (MapEntry<String, T> entry in deleteEntries) {
+    bool didRemove = await storage.remove(entry.key);
+    expect(didRemove, isTrue);
+  }
+  return deleteEntries;
 }
-Meal checkMealToRemove(Meal expectedMeal, Deserializer deserialize) {
-  expect(deserialize.meta.type, equals(Meal.type));
-  var removedMeal = Meal.decode(deserialize);
+Meal deserializeMeal(Deserializer deserialize) {
+  expect(deserialize.entryInfo, isInstanceOf<ModelInfo>());
+  expect((deserialize.entryInfo as ModelInfo).modelType, equals(Meal.staticType));
+  return Meal.decode(deserialize);
+}
+void checkMealToRemove(Meal expectedMeal, Meal removedMeal) {
   expect(expectedMeal.staple, equals(removedMeal.staple));
   expect(expectedMeal.vegetable, equals(removedMeal.vegetable));
   expect(expectedMeal.meat, equals(removedMeal.meat));
   expect(expectedMeal.spice, equals(removedMeal.spice));
-  return removedMeal;
+}
+Person deserializePerson(Deserializer deserialize) {
+  expect(deserialize.entryInfo, isInstanceOf<ModelInfo>());
+  expect((deserialize.entryInfo as ModelInfo).modelType, equals(Person.staticType));
+  return Person.decode(deserialize);
+}
+void checkPersonToRemove(Person expectedPerson, Person removedPerson) {
+  expect(expectedPerson.name.first, equals(removedPerson.name.first));
+  expect(expectedPerson.name.last, equals(removedPerson.name.last));
+  expect(expectedPerson.birthday, equals(removedPerson.birthday));
+}
+
+Future<int> checkCountOfModelType(Storage st, String type, int expectedCount) async {
+  int c = await countOfModelType(st, type);
+  expect(c, equals(expectedCount));
+  return c;
+}
+
+Future<int> countOfModelType(Storage st, String type) async {
+  int modelTypeCount = 0;
+
+  await for (Deserializer deserialize in st.values) {
+    var info = deserialize.entryInfo;
+    if (info is ModelInfo && info.modelType == type) {
+      modelTypeCount++;
+    }
+  }
+
+  return modelTypeCount;
 }

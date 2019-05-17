@@ -1,183 +1,171 @@
-/*
-  Frontend that established isolate and provides messaging with the backend.
-*/
-
-import 'isolate_controller.dart';
-import 'dart:isolate';
-import 'control_messages.dart';
-import 'storage_backend.dart';
-import 'identifier.dart';
-import 'dart:collection';
+import 'commit_file/commit_file.dart';
+import 'commit_file/line_data.dart';
+import 'index.dart';
+import 'serialization/serializer.dart';
+import 'serialization/deserializer.dart';
+import 'serialization/line_serializer.dart';
+import 'serialization/line_deserializer.dart';
+import 'serialization/model.dart';
+import 'serialization/control_chars.dart';
+import 'serialization/entry_info_private.dart';
+import 'serialization/entry_info.dart';
+import 'serialization/remove_serializer.dart';
 import 'dart:async';
-import 'serialization.dart';
-import 'frontend_entries.dart';
+import 'package:path/path.dart' as path;
+import 'dart:io';
 
-/// Flutter Storage
+/// Storage
 /// 
-/// Storage frontend for commit log based database.
-/// 
-class Storage extends IsolateController {
-  final String path;
-  final HashMap<String, Completer> _pendingCompleters;
-  final HashMap<String, Sink> _pendingSinks;
-
-  Storage._init(this.path)
-    : _pendingCompleters = HashMap<String, Completer>(),
-      _pendingSinks = HashMap<String, Sink>();
-
+class Storage {
+  CommitFile _log;
+  Index _index;
   
-  /// Open a Flutter Storage instance
-  /// 
-  /// Provide the [path] for the file the database should
-  /// be contained in.
-  /// 
   static Future<Storage> open(String path) async {
-    var ctrl = Storage._init(path);
-    await ctrl.startIsolate();
-    await ctrl._sendFutureRequest<void>(InitBackendRequest(
-      identifier(),
-      path,
-    ));
-    return ctrl;
+    var log = CommitFile(path);
+    var index = await _initIndex(log);
+    return Storage._create(log, index);
   }
 
-  InitIsolateWorker initIsolateWorkerFn() => _BackendWorker.create;
+  Storage._create(CommitFile log, Index index)
+    : assert(log != null),
+      assert(index != null),
+      _log = log,
+      _index = index;
 
-  void receiveMessage(dynamic message) {
-    if (message is ControlResponse) {
-      _processControlResponse(message);
+  static Future<Index> _initIndex(CommitFile log) async {
+    Index index;
+    var rest = List<LineData>();
+    await for (LineData line in log.readLinesReverse()) {
+      if (line.first == ControlChars.indexPrefixBytes.first) {
+        var d = LineDeserializer(line);
+        assert(d.entryInfo is IndexInfo, 'Index was serialized with wrong entry info type');
+        var info = d.entryInfo as IndexInfo;
+        index = Index.decode(info.modelType, info.modelVersion, d);
+        break;
+      } else {
+        rest.add(line);
+      }
+    }
+    if (index == null) {
+      index = Index();
+    }
+    for (int i = rest.length - 1; i >= 0; i--) {
+      var line = rest[i];
+      var d = LineDeserializer(line);
+      var info = d.entryInfo;
+      if (info is ModelInfo || info is ValueInfo) {
+        index[info.key] = line.startIndex;
+      } else if (info is RemoveInfo) {
+        index.remove(info.key);
+      }
+    }
+    return index;
+  }
+
+  // Writing
+
+  /// Puts the given model for the given key.
+  /// 
+  /// Logs the change to the underlaying file.
+  /// 
+  Future<void> putModel(String key, Model model) async {
+    var startIndex = await _log.length();
+    var s = LineSerializer.model(
+      sink: _log.writeLine(),
+      key: key,
+      modelType: model.type,
+      modelVersion: model.version,
+    );
+    s.model(model);
+    _index[key] = startIndex;
+    return s.close();
+  }
+
+  /// Get a serializer for puting one or several values for a given key.
+  /// 
+  /// Logs the change to the underlaying file.
+  /// Putting a value MUST ALWAYS be finished by calling
+  /// [conclude()] on the [ValueSerializer].
+  /// 
+  Future<Serializer> serializer(String key) async {
+    var startIndex = await _log.length();
+    return LineSerializer.value(
+      sink: _log.writeLine(),
+      key: key,
+      onClose: () {
+        _index[key] = startIndex;
+      },
+    );
+  }
+
+  /// Remove an entry
+  /// 
+  /// Returns [true] if the value was present in the index.
+  ///
+  Future<bool> remove(String key) async {
+    if (_index.contains(key)) {
+      var s = RemoveSerializer(
+        sink: _log.writeLine(),
+        key: key,
+      );
+      await s.close();
+      _index.remove(key);
+      return true;
+    } else {
+      return false;
+    }
+  }
+  
+  /// Undo last change.
+  /// 
+  /// All changes to the storage can be undone.
+  /// Compaction clears the log from previous entries.
+  /// In other words: it resets the undo log.
+  /// Returns the key of the entrie's state that was undone.
+  /// 
+  String undo() => _index.undo();
+
+  // Reading
+
+  /// Get a deserializer for the given key.
+  /// 
+  /// Check the deserializer's meta field for the
+  /// type.
+  /// 
+  Future<Deserializer> deserializer(String key) async {
+    int startIndex = _index[key];
+    if (startIndex == -1) return null;
+    var line = await _log.readLine(startIndex);
+    return LineDeserializer(line);
+  }
+
+  /// Get the model for the given key.
+  /// 
+  /// Returns [null] if the given [key] wans't found.
+  /// Throws an error, if [key] doesn't point to a valid model.
+  /// 
+  Future<T> getModel<T>(String key, T decode(String type, int version, Deserializer des)) async {
+    var des = await deserializer(key);
+    if (des == null) return null;
+    assert(des.entryInfo is ModelInfo);
+    var info = des.entryInfo as ModelInfo;
+    return decode(info.modelType, info.modelVersion, des);
+  }
+  
+  /// Iterate keys only
+  /// 
+  Iterable<String> get keys => _index.keys;
+  
+  /// Iterate values only
+  /// 
+  Stream<Deserializer> get values async* {
+    for (int startIndex in _index.startIndexes) {
+      var line = await _log.readLine(startIndex);
+      yield LineDeserializer(line);
     }
   }
 
-  // Frontend API
-
-  /// Sets the given value for the given key.
-  /// 
-  /// Logs the change to the underlaying file.
-  /// Keeps the value in the cache until [clearCache] is called.
-  /// To make a batch of changes undoable, wrap them in both:
-  /// [openUndoGroup] and [closeUndoGroup].
-  /// 
-  Future<void> setValue(String key, Model model) =>
-    _sendFutureRequest<void>(SetValueRequest(
-      identifier(),
-      key,
-      model,
-    ));
-
-  /// Adding a collection of key-value-pairs.
-  /// 
-  /// The key-value-pairs need to be provided as iterable
-  /// of [StorageEncodeEntry]s.
-  /// 
-  Future<void> addEntries(Iterable<StorageEncodeEntry> entries) =>
-    _sendFutureRequest<void>(AddEntriesRequest(
-      identifier(),
-      entries,
-    ));
-
-  /// Get a value deserializer for the given key.
-  /// 
-  /// Check the deserializer's meta field for the
-  /// type of the model for decoding.
-  /// 
-  Future<Deserializer> value(String key) =>
-    _sendFutureRequest<Deserializer>(ValueRequest(
-      identifier(),
-      key,
-    ));
-
-  /// Get a value deserializer for the given key.
-  /// 
-  /// Check the deserializer's meta field for the
-  /// type of the model for decoding.
-  /// 
-  Future<Deserializer> remove(String key) =>
-    _sendFutureRequest<Deserializer>(RemoveRequest(
-      identifier(),
-      key,
-    ));
-
-  // Undo Support
-
-  /// Open an undo group to start grouping changes for undo.
-  /// 
-  /// Close the undo group with [closeUndoGroup].
-  /// Call [undo] to revert the storage state.
-  /// 
-  /// For each call to [openUndoGroup] there must be a
-  /// balancing call to [closeUndoGroup].
-  /// The current undo group will be concluded only after
-  /// the last balancing call to [closeUndoGroup].
-  /// 
-  Future<void> openUndoGroup() =>
-    _sendFutureRequest<void>(OpenUndoGroupRequest(
-      identifier(),
-    ));
-
-  /// Close an undo group to conclude an undoable collection of changes.
-  /// 
-  /// Open an undo group with [openUndoGroup].
-  /// Call [undo] to revert the storage state.
-  /// 
-  /// For each call to [openUndoGroup] there must be a
-  /// balancing call to [closeUndoGroup].
-  /// The current undo group will be concluded only after
-  /// the last balancing call to [closeUndoGroup].
-  /// 
-  Future<void> closeUndoGroup() =>
-    _sendFutureRequest<void>(CloseUndoGroupRequest(
-      identifier(),
-    ));
-
-  /// Undo all changes made in an undo group;
-  /// 
-  /// Returns a [List<UndoAction>]s containing
-  /// all [UndoAction]s for the user to 
-  /// further process undo actions.
-  /// 
-  Future<List<UndoAction>> undo() {
-    var request = UndoRequest(identifier());
-    return _sendFutureRequest<List<UndoAction>>(request);
-  }
-
-  // Iteration Support
-
-  /// Iterate keys and values
-  /// 
-  Stream<StorageDecodeEntry> get entries {
-    var request = EntriesRequest(identifier());
-    return _sendStreamRequest<StorageDecodeEntry>(request);
-  }
-
-  /// Iterate keys only
-  /// 
-  Stream<String> get keys =>
-    _sendStreamRequest<String>(KeysRequest(
-      identifier(),
-    ));
-
-  /// Iterate values only
-  /// 
-  Stream<Deserializer> get values =>
-    _sendStreamRequest<Deserializer>(ValuesRequest(
-      identifier(),
-    ));
-
-  /// Perform compaction
-  /// 
-  /// Compaction is the process of reducing all logged
-  /// key-value-pairs to the most recent state.
-  /// 
-  /// Usually used before closing a storage:
-  ///   1. Check [needsCompaction], if true continue:
-  ///   2. Perform [compaction()] and
-  ///   3. Conclude with [close()] or [closeAndOpen(…)].
-  /// 
-  Future<void> compaction() =>
-    _sendFutureRequest<void>(CompactionRequest(
-      identifier(),
-    ));
+  // Controlling
 
   /// Get the stale data ratio
   /// 
@@ -197,257 +185,80 @@ class Storage extends IsolateController {
   /// Stale data can be used to undo changes.
   /// Compaction removes stale data.
   ///
-  Future<double> get staleRatio =>
-    _sendFutureRequest<double>(StaleRatioRequest(
-      identifier(),
-    ));
+  double get staleRatio => _index.staleRatio;
 
   /// Check if storage needs compaction
   /// 
   /// Returns true in case the storage needs compaction.
   /// The treshold [staleRatio] is 0.5.
   /// 
-  Future<bool> get needsCompaction =>
-    _sendFutureRequest<bool>(NeedsCompactionRequest(
-      identifier(),
-    ));
+  bool get needsCompaction => _index.staleRatio >= 1.5;
 
-  /// Clears the in-memory-cache of storage
+  /// Perform compaction
   /// 
-  /// Removes all cached values. Does not affect indexes
-  /// as indexes are always kept in memory.
+  /// Compaction is the process of reducing all logged
+  /// key-value-pairs to the most recent state.
   /// 
-  Future<void> clearCache() =>
-    _sendFutureRequest<void>(ClearCacheRequest(
-      identifier(),
-    ));
-
-  /// Flush state of storage to solid state.
+  /// Usually used before closing a storage:
+  ///   1. Check [needsCompaction], if true continue:
+  ///   2. Perform [compaction()] and
+  ///   3. Conclude with [close()] or [closeAndOpen()].
   /// 
-  /// A flush appends all management state of
-  /// a storage to the end of the log.
-  /// Thus a storage can be opened fast and does not
-  /// need to be replay the complete log.
+  /// Other situation appropriate for compaction:
+  /// After operating system memory warning.
   /// 
-  Future<void> flushState() =>
-    _sendFutureRequest<void>(FlushStateRequest(
-      identifier(),
-    ));
-
-  /// Flush state of storage and close.
-  /// 
-  /// In case a storage is not flushed and closed
-  /// the complete log needs to be replayed to
-  /// restore it's management state, thus
-  /// making opening it slower.
-  /// 
-  /// Hint: always [close] a storage.
-  /// 
-  Future<void> close() async {
-    await _sendFutureRequest<void>(CloseRequest(
-      identifier(),
-    ));
-    stopIsolate();
+  Future<Storage> compaction() async {
+    var originalPath = _log.path;
+    var basename = path.basenameWithoutExtension(_log.path);
+    var extension = path.extension(_log.path);
+    var compactionPath = '${basename}_compaction$extension';
+    var backupPath = '${basename}_backup$extension}';
+    var writeLog = CommitFile(compactionPath);
+    var newIdxForOldIdx = <int, int>{};
+    for (int oldIdx in _index.startIndexes) {
+      int newIdx = await writeLog.length();
+      var sink = writeLog.writeLine();
+      var line = await _log.readLine(oldIdx);
+      sink.add(line);
+      await sink.close();
+      newIdxForOldIdx[oldIdx] = newIdx;
+    }
+    await File(_log.path).rename(backupPath);
+    await File(compactionPath).rename(_log.path);
+    await File(backupPath).delete();
+    _log = CommitFile(originalPath);
+    _index.replaceStartIndexes(newIdxForOldIdx);
+    return this.flush();
   }
 
-  /// Close currently open storage and open other path.
+  /// Flush state.
   /// 
-  /// Before opening the other path the currently open
-  /// storage's state is flushed and closed.
+  /// Flushing appends the current index
+  /// snapshop to the end of the log.
   /// 
-  /// *Don't call [closeAndOpen] while undo groups are open.*
+  /// A fresh index snapshot at the end of the log
+  /// speeds up the opening process of a storage.
   /// 
-  /// After method concludes storage is reading 
-  /// from and writing to new path.
+  /// Always flush a storage after usage.
   /// 
-  Future<Storage> closeAndOpen(String newPath) async {
-    await _sendFutureRequest<void>(CloseAndOpenRequest(
-      identifier(),
-      newPath,
-    ));
+  Future<Storage> flush() async {
+    var s = LineSerializer.index(
+      sink: _log.writeLine(),
+      indexVersion: _index.version,
+    );
+    _index.encode(s);
+    await s.close();
     return this;
   }
-
-  // Private Methods
-
-  Future<T> _sendFutureRequest<T>(ControlRequest req) {
-    var completer = Completer<T>();
-    _pendingCompleters[req.id] = completer;
-    sendMessage(req);
-    return completer.future;
-  }
-
-  Stream<T> _sendStreamRequest<T>(ControlRequest req) {
-    var sink = StreamController<T>();
-    _pendingSinks[req.id] = sink;
-    sendMessage(req);
-    return sink.stream;
-  }
-
-  void _processControlResponse(ControlResponse response) {
-    if (response is RequestConclusion) {
-      _complete<void>(response.id, null);
-
-    } else if (response is RemoveResponse) {
-      _complete<Deserializer>(response.id, response.value);
-
-    } else if (response is ValueResponse) {
-      _complete<Deserializer>(response.id, response.value);
-
-    } else if (response is UndoResponse) {
-      _complete<List<UndoAction>>(response.id, response.actions);
-
-    } else if (response is EntriesResponse) {
-      _addToSink<StorageDecodeEntry>(response.id, response.entry);
-
-    } else if (response is KeysResponse) {
-      _addToSink<String>(response.id, response.key);
-
-    } else if (response is ValuesResponse) {
-      _addToSink<Deserializer>(response.id, response.deserialize);
-
-    } else if (response is CloseSinkResponse) {
-      _closeSink(response.id);
-
-    } else if (response is StaleRatioResponse) {
-      _complete<double>(response.id, response.staleRatio);
-
-    } else if (response is NeedsCompactionResponse) {
-      _complete<bool>(response.id, response.needsCompaction);
-    }
-  }
-
-  void _complete<T>(String id, T value) {
-    Completer<T> completer = _pendingCompleters[id];
-    completer.complete(value);
-    _pendingCompleters.remove(id);
-  }
-
-  void _addToSink<T>(String id, T value) {
-    Sink<T> sink = _pendingSinks[id];
-    sink.add(value);
-  }
-
-  void _closeSink(String id) {
-    Sink sink = _pendingSinks[id];
-    sink.close();
-    _pendingCompleters.remove(id);
-  }
-}
-
-class _BackendWorker extends IsolateWorker {
-  StorageBackend _backend;
-
-  _BackendWorker(SendPort fromWorkerPort) : super(fromWorkerPort);
   
-  static _BackendWorker create(SendPort fromWorkerPort) =>
-    _BackendWorker(fromWorkerPort);
-
-  void receiveMessage(dynamic message) {
-    if (message is ControlRequest) {
-      _processControlRequest(message);
-    }
-  }
-
-  void _processControlRequest(ControlRequest request) {
-    if (_backend == null && request is InitBackendRequest) {
-      _backend = StorageBackend(request.path);
-      _sendRequestConclusion(request);
-      return;
-    }
-    assert(_backend != null);
-
-    if (request is SetValueRequest) {
-      _backend.setValue(request.key, request.value);
-      _sendRequestConclusion(request);
-
-    } else if (request is AddEntriesRequest) {
-      _backend.addEntries(request.entries);
-      _sendRequestConclusion(request);
-
-    } else if (request is ValueRequest) {
-      sendMessage(ValueResponse(
-        request.id,
-        _backend.value(request.key),
-      ));
-
-    } else if (request is RemoveRequest) {
-      sendMessage(RemoveResponse(
-        request.id,
-        _backend.remove(request.key),
-      ));
-
-    } else if (request is OpenUndoGroupRequest) {
-      _backend.openUndoGroup();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseUndoGroupRequest) {
-      _backend.closeUndoGroup();
-      _sendRequestConclusion(request);
-
-    } else if (request is UndoRequest) {
-      var response = UndoResponse(
-        request.id, 
-        _backend.undo(),
-      );
-      sendMessage(response);
-
-    } else if (request is EntriesRequest) {
-      for (StorageDecodeEntry entry in _backend.entries) {
-        sendMessage(EntriesResponse(request.id, entry));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is KeysRequest) {
-      for (String key in _backend.keys) {
-        sendMessage(KeysResponse(request.id, key));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is ValuesRequest) {
-      for (Deserializer deserialize in _backend.values) {
-        sendMessage(ValuesResponse(request.id, deserialize));
-      }
-      sendMessage(CloseSinkResponse(request.id));
-
-    } else if (request is CompactionRequest) {
-      _backend.compaction();
-      _sendRequestConclusion(request);
-
-    } else if (request is StaleRatioRequest) {
-      sendMessage(StaleRatioResponse(
-        request.id, 
-        _backend.staleRatio,
-      ));
-
-    } else if (request is NeedsCompactionRequest) {
-      sendMessage(NeedsCompactionResponse(
-        request.id, 
-        _backend.needsCompaction,
-      ));
-
-    } else if (request is ClearCacheRequest) {
-      _backend.clearCache();
-      _sendRequestConclusion(request);
-
-    } else if (request is FlushStateRequest) {
-      _backend.flushState();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseRequest) {
-      _backend.close();
-      _sendRequestConclusion(request);
-
-    } else if (request is CloseAndOpenRequest) {
-      _backend.closeAndOpen(request.path);
-      _sendRequestConclusion(request);
-    }
-  }
-
-  void _sendRequestConclusion(ControlRequest req) {
-    sendMessage(RequestConclusion(req.id));
+  /// Open a file.
+  /// 
+  /// After method concludes, storage is reading
+  /// from and writing to the path specified.
+  /// 
+  Future<Storage> openFile(String newPath) async {
+    _log = CommitFile(newPath);
+    _index = await _initIndex(_log);
+    return this;
   }
 }
-
-
-

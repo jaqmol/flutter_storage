@@ -1,14 +1,17 @@
-import 'package:flutter_storage/src/serialization.dart';
-import 'package:flutter_storage/src/frontend_entries.dart';
-import 'package:flutter_storage/src/identifier.dart';
+// import 'package:flutter_storage/src/serialization.dart';
+// import 'package:flutter_storage/src/frontend_entries.dart';
+// import 'package:flutter_storage/src/identifier.dart';
+import '../lib/src/identifier.dart';
+import '../lib/src/serialization/model.dart';
+import '../lib/src/serialization/serializer.dart';
+import '../lib/src/serialization/deserializer.dart';
 import 'dart:math';
 
-List<StorageEncodeEntry<Person>> generatePeople(Random gen, int amount) {
-  return List<StorageEncodeEntry<Person>>.generate(amount, (_) => randomPerson(gen));
-}
+List<MapEntry<String, Person>> generatePeople(Random gen, int amount) =>
+  List<MapEntry<String, Person>>.generate(amount, (_) => randomPerson(gen));
 
-StorageEncodeEntry<Person> randomPerson(Random gen) {
-  return StorageEncodeEntry(
+MapEntry<String, Person> randomPerson(Random gen) =>
+  MapEntry<String, Person>(
     identifier(),
     Person(
       FullName(
@@ -18,25 +21,21 @@ StorageEncodeEntry<Person> randomPerson(Random gen) {
       randomDateTime(gen),
     ),
   );
-}
 
-DateTime  randomDateTime(Random gen) {
-  return DateTime(
+DateTime  randomDateTime(Random gen) =>
+  DateTime(
     1900 + gen.nextInt(101),
     1 + gen.nextInt(12),
     1 + gen.nextInt(30),
   );
-}
 
 
 
-List<StorageEncodeEntry<Meal>> generateMeals(Random gen, int amount) {
-  return List<StorageEncodeEntry<Meal>>.generate(amount, (_) => randomMeal(gen));
-}
+List<MapEntry<String, Meal>> generateMeals(Random gen, int amount) =>
+  List<MapEntry<String, Meal>>.generate(amount, (_) => randomMeal(gen));
 
-
-StorageEncodeEntry<Meal> randomMeal(Random gen) {
-  return StorageEncodeEntry(
+MapEntry<String, Meal> randomMeal(Random gen) =>
+  MapEntry<String, Meal>(
     identifier(),
     Meal(
       Staple.values[gen.nextInt(Staple.values.length)],
@@ -45,10 +44,11 @@ StorageEncodeEntry<Meal> randomMeal(Random gen) {
       Spice.values[gen.nextInt(Spice.values.length)],
     ),
   );
-}
 
 class Person implements Model {
-  static final String type = 'person';
+  static final String staticType = 'person';
+  final String type = staticType;
+  final int version = 0;
   final FullName name;
   final DateTime birthday;
 
@@ -65,8 +65,8 @@ class Person implements Model {
     birthday ?? this.birthday,
   );
 
-  Serializer encode([Serializer serialize]) =>
-    (serialize ?? Serializer(type))
+  Serializer encode(Serializer serialize) =>
+    serialize
       .string(name.first)
       .string(name.last)
       .string(birthday.toIso8601String());
@@ -130,7 +130,9 @@ enum Spice {
 }
 
 class Meal extends Model {
-  static final String type = 'meal';
+  static final String staticType = 'meal';
+  final String type = staticType;
+  final int version = 0;
   final Staple staple;
   final Vegetable vegetable;
   final Meat meat;
@@ -142,8 +144,8 @@ class Meal extends Model {
     return '${this.meat.toString()} with ${this.vegetable.toString()}, ${this.staple.toString()} and ${this.spice.toString()}';
   }
 
-  Serializer encode([Serializer serialize]) =>
-    (serialize ?? Serializer(type))
+  Serializer encode(Serializer serialize) =>
+    serialize
       .integer(staple.index)
       .integer(vegetable.index)
       .integer(meat.index)

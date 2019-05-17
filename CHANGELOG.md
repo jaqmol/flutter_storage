@@ -1,3 +1,12 @@
+## [0.9.4] - 2019/03/10
+
+* Due to apparent changes in object serialization between isolates in the Dart VM and/or the native runtime, backend was renamed to directly expose it's API without being encapsulated by an isolate.
+* Thus this version is not concurrent anymore.
+
+## [0.9.3] - 2019/03/10
+
+* Asserting list type for `Storage.addEntries(…)`.
+
 ## [0.9.2] - 2019/02/07
 
 * Making `Serializer.collection(…)` accept `Iterables`.

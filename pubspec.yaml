@@ -1,6 +1,6 @@
 name: flutter_storage
 description: A commit-log based database for flutter apps written in Dart.
-version: 0.9.2
+version: 0.9.4
 author: Ronny Reichmann <ronny.reichmann@gmail.com>
 homepage: https://github.com/jaqmol/flutter_storage
 
