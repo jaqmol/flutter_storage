@@ -1,12 +1,12 @@
 import 'dart:collection';
 
-class DataBatch extends ListBase<int> {
+class LineData extends ListBase<int> {
   final int startIndex;
   List<int> _data;
 
-  DataBatch(this.startIndex, List<int> data)
-    : assert(data != null),
-      _data = data;
+  LineData(this.startIndex, [Iterable<int> data])
+    : assert(startIndex != null),
+      _data = data?.toList() ?? List<int>();
 
   @override
   int operator[] (int index) => _data[index];

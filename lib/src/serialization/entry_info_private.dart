@@ -2,6 +2,7 @@ import 'entry_info.dart';
 import 'control_chars.dart';
 import 'unescaping.dart';
 import 'escaping.dart';
+import '../index.dart';
 
 class RemoveInfo extends EntryInfo {
   RemoveInfo(String key) {
@@ -23,6 +24,7 @@ class RemoveInfo extends EntryInfo {
 }
 
 class IndexInfo extends EntryInfo {
+  final String modelType = Index.staticType;
   final int modelVersion;
 
   IndexInfo(this.modelVersion) {

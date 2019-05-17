@@ -11,21 +11,20 @@ import 'control_chars.dart';
 
 String _notOpenErrorMsg = "Attempted write operation on concluded Serializer!";
 
-typedef void StartIndexCallback(int startIndex);
+typedef void OnCloseCallback();
 
 class LineSerializer implements Serializer {
   final StreamSink<List<int>> _sink;
-  final startIndex;
+  final OnCloseCallback onClose;
   final EntryInfo entryInfo;
   bool _isOpen;
 
   LineSerializer.index({
     @required StreamSink<List<int>> sink,
     @required int indexVersion,
-    @required this.startIndex,
+    this.onClose,
   }): assert(sink != null),
       assert(indexVersion != null),
-      assert(startIndex != null),
       _sink = sink,
       entryInfo = IndexInfo(indexVersion),
       _isOpen = true {
@@ -37,12 +36,11 @@ class LineSerializer implements Serializer {
     @required String key,
     @required String modelType,
     @required int modelVersion,
-    @required this.startIndex,
+    this.onClose,
   }): assert(sink != null),
       assert(key != null),
       assert(modelType != null),
       assert(modelVersion != null),
-      assert(startIndex != null),
       _sink = sink,
       entryInfo = ModelInfo(
         modelType: modelType,
@@ -56,10 +54,9 @@ class LineSerializer implements Serializer {
   LineSerializer.value({
     @required StreamSink<List<int>> sink,
     @required String key,
-    @required this.startIndex,
+    this.onClose,
   }): assert(sink != null),
       assert(key != null),
-      assert(startIndex != null),
       _sink = sink,
       entryInfo = ValueInfo(key),
       _isOpen = true {
@@ -68,10 +65,7 @@ class LineSerializer implements Serializer {
 
   Serializer model(Model model) {
     assert(_isOpen = true, _notOpenErrorMsg);
-    _sink.add(utf8.encode(ModelInfo(
-      modelType: model.type,
-      modelVersion: model.version,
-    ).toString()));
+    model.encode(this);
     return this;
   }
 
@@ -134,8 +128,9 @@ class LineSerializer implements Serializer {
     return this;
   }
 
-  Future conclude() {
+  Future<void> close() {
     assert(_isOpen = true, _notOpenErrorMsg);
+    if (onClose != null) onClose();
     _isOpen = false;
     return _sink.close();
   }

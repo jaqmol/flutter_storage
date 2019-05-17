@@ -55,5 +55,5 @@ abstract class Serializer {
   /// 
   /// Always finish writing of values with [conclude].
   /// 
-  Future conclude();
+  Future<void> close();
 }

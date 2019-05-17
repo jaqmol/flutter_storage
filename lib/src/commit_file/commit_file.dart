@@ -1,38 +1,45 @@
 import 'dart:io';
 import 'dart:async';
-import 'read_line_transformer.dart';
-import 'read_lines_transformer.dart';
-import 'line_writer.dart';
-import 'read_reverse.dart';
-import 'data_batch.dart';
+import 'line_sink.dart';
+import 'reverse_lines_reader.dart';
+import 'line_wise_transformer.dart';
+import 'byte_wise_transformer.dart';
+import 'byte_data.dart';
+import 'till_eol_transformer.dart';
+import 'line_data.dart';
 
 class CommitFile {
-  File _file;
+  final File _file;
   final String path;
 
-  CommitFile(this.path){
-    _file = File(path);
-    var type = FileSystemEntity.typeSync(path);
-    if (type == FileSystemEntityType.notFound) {
-      _file.createSync();
-    }
-  }
+  CommitFile(this.path)
+    : assert(path != null),
+      _file = File(path) {
+        var type = FileSystemEntity.typeSync(path);
+        if (type == FileSystemEntityType.notFound) {
+          _file.createSync();
+        }
+      }
 
   Future<int> length() => _file.length();
 
-  StreamSink<List<int>> writeLine() {
-    return LineWriter(_file.openWrite(mode: FileMode.append));
-  }
+  // TODO TEST
+  StreamSink<List<int>> writeLine() =>
+    LineSink(_file.openWrite(mode: FileMode.append));
 
-  Stream<DataBatch> readLine(int startIndex) {
-    return _file.openRead(startIndex).transform<DataBatch>(ReadLineTransformer(startIndex));
-  }
+  // TODO TEST Error behavior
+  Future<LineData> readLine(int startIndex) =>
+    _file.openRead(startIndex)
+      .transform<ByteData>(byteWiseTransformer(startIndex))
+      .transform<LineData>(TillEolTransformer(startIndex))
+      .single;
 
-  Stream<Stream<DataBatch>> readLines() {
-    return _file.openRead(0).transform<Stream<DataBatch>>(ReadLinesTransformer());
-  }
+  // TODO TEST
+  Stream<LineData> readLines() =>
+    _file.openRead(0)
+      .transform<ByteData>(byteWiseTransformer(0))
+      .transform<LineData>(lineWiseTransformer(0));
 
-  Stream<Stream<DataBatch>> readLinesReverse() {
-    return readReverse(_file).transform<Stream<DataBatch>>(ReadLinesTransformer());
-  }
+  // TODO TEST
+  Stream<LineData> readLinesReverse() => reverseLinesReader(_file);
 }

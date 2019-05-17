@@ -4,40 +4,31 @@ import 'entry_info_private.dart';
 import 'entry_info.dart';
 import 'line_deserializer.dart';
 import '../index.dart';
-import '../commit_file/data_batch.dart';
+import '../commit_file/line_data.dart';
 
-// TODO: Refactore in DataBatch-support
-
-Future<Index> deserializeIndex(Stream<Stream<List<int>>> reverseLinesReplay, int fileLength) async {
-  var lines = List<List<int>>();
-  var startIndexes = List<int>();
-  int counter = 0;
+Future<Index> deserializeIndex(Stream<LineData> reversedLinesReplay) async {
   Index index;
-  await for(Stream<List<int>> reverseLine in reverseLinesReplay) {
-    var reversedData = List<int>();
-    await for (List<int> data in reverseLine) {
-      reversedData.insertAll(0, data);
-    }
-    var line = reversedData.reversed.toList();
-    counter += line.length;
+  var reverseRest = List<LineData>();
+  await for(LineData line in reversedLinesReplay) {
     if (ControlChars.newlineBytes.first == line.first) {
       var d = LineDeserializer(line);
       var info = d.entryInfo as IndexInfo;
       index = Index.decode(Index.staticType, info.modelVersion, d);
       break;
     } else {
-      lines.insert(0, line);
-      startIndexes.insert(0, fileLength - counter);
+      reverseRest.add(line);
     }
   }
   if (index == null) {
     index = Index();
   }
-  for (List<int> line in lines) {
+  for (LineData line in reverseRest.reversed) {
     var d = LineDeserializer(line);
     var info = d.entryInfo;
-    if (info is ModelInfo) {
-      index[info]
+    if (info is ModelInfo || info is ValueInfo) {
+      index[info.key] = line.startIndex;
+    } else if (info is RemoveInfo) {
+      index.remove(info.key);
     }
   }
   return index;

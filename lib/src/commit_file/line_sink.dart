@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import '../serialization/control_chars.dart';
 
-class LineWriter implements StreamSink<List<int>> {
+class LineSink implements StreamSink<List<int>> {
   final IOSink _sink;
 
-  LineWriter(this._sink);
+  LineSink(this._sink);
 
   @override
   void add(List<int> data) {
@@ -18,17 +18,17 @@ class LineWriter implements StreamSink<List<int>> {
   }
 
   @override
-  Future addStream(Stream<List<int>> stream) {
+  Future<void> addStream(Stream<List<int>> stream) {
     return _sink.addStream(stream);
   }
 
   @override
-  Future close() async {
+  Future<void> close() async {
     _sink.add(ControlChars.newlineBytes);
     await _sink.flush();
     return _sink.close();
   }
 
   @override
-  Future get done => _sink.done;
+  Future<void> get done => _sink.done;
 }

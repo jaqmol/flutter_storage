@@ -3,14 +3,15 @@ import 'unescaping.dart';
 import 'dart:convert';
 import 'entry_info.dart';
 import 'control_chars.dart';
+import '../commit_file/line_data.dart';
 // import '../component_reader.dart';
 
 class LineDeserializer implements Deserializer {
-  List<int> _data;
+  LineData _data;
   int _index;
   EntryInfo _entryInfo;
 
-  LineDeserializer(List<int> data)
+  LineDeserializer(LineData data)
     : assert(data != null),
       _data = data,
       _index = 0 {

@@ -17,9 +17,10 @@ class Index extends Model {
   Iterable<String> get keys => _data.keys;
   List<int> get startIndexes {
     List<int> idxs = _data.values.toList()..sort();
-    print('start indexes: $idxs');
     return List<int>.unmodifiable(idxs);
   }
+
+  bool contains(String key) => _data.containsKey(key);
 
   void operator[]= (String key, int startIndex) {
     _data[key] = startIndex;
